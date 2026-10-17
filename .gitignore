@@ -1,0 +1,14 @@
+# original-format music (the game ships the Opus .m4a versions)
+music/*.mp3
+music/*.ogg
+
+# build outputs and working files
+dist/
+artifact/
+iron-front.html
+shots/
+trailer/
+reports/
+tools/pub*.json
+docs/blog-post.html
+.claude/

@@ -1,0 +1,297 @@
+<title>Bit-zkrieg: Iron Front '44</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Stardos+Stencil:wght@400;700&family=Special+Elite&family=Courier+Prime:wght@400;700&display=swap">
+<style>
+/*__CSS__*/
+</style>
+<canvas id="cv"></canvas>
+
+<!-- title -->
+<section class="screen" id="title">
+  <canvas id="titlecv"></canvas>
+  <div class="logo"><h1>BIT<span>-</span>ZKRIEG</h1><h2 class="logosub">IRON FRONT <span>’44</span></h2><p>Shanghai to Berlin, El Alamein to the Rhine · 1937–1945</p></div>
+  <nav class="mainmenu">
+    <button id="continue" hidden>Continue</button>
+    <button id="bcampaign">Campaigns</button>
+    <button id="bwarmap">War Map</button>
+    <button id="bskirmish">Skirmish</button>
+    <button id="bwaves">Last Stand</button>
+    <button id="bzed" class="zedbtn">Dead of Night</button>
+    <button id="beditor">Map Builder</button>
+    <button id="bmulti">Multiplayer</button>
+    <button id="barmoury">Archive</button>
+    <button id="brecord">Service Record</button>
+    <button id="bjukebox">Jukebox</button>
+    <button id="bhelp">Field manual</button>
+    <button id="bsettings">Settings</button>
+    <button id="bcredits" class="ghost">Credits</button>
+  </nav>
+</section>
+
+<!-- campaigns -->
+<section class="screen paper" id="campaigns" hidden>
+  <header><h2>Campaigns</h2><p>Sixty-six battles in eleven campaigns, from Shanghai in 1937 through the Western Desert to Berlin in 1945, plus basic training. Veterans who survive carry on into the next fight.</p></header>
+  <div id="camplist"></div>
+  <header class="sub"><h3>Core force</h3></header>
+  <div id="corelist"></div>
+  <footer><button class="back">Back</button></footer>
+</section>
+
+<!-- campaign -->
+<section class="screen paper" id="campaign" hidden>
+  <header><h2 id="campname"></h2><p id="campsub"></p></header>
+  <div class="campmapwrap"><canvas class="warmap" id="campmap"></canvas></div>
+  <div id="missions"></div>
+  <footer><button class="back" data-to="campaigns">Back</button><button id="unlockall" class="ghost">Unlock all missions</button></footer>
+</section>
+
+<!-- briefing -->
+<section class="screen paper" id="brief" hidden>
+  <div class="folder">
+    <div class="stampmark">SECRET</div>
+    <p class="opline"></p>
+    <h2></h2><p class="when"></p>
+    <canvas class="warmap"></canvas>
+    <div class="bgrid">
+      <div><h4>The situation</h4><p class="story"></p><h4>Your orders</h4><p class="goal"></p></div>
+      <div class="mapcol"><canvas class="minimap"></canvas><small class="size"></small></div>
+    </div>
+    <div class="forces"></div>
+    <div class="stakes"><div class="win"><h4>If you win</h4><p></p></div><div class="lose"><h4>If you lose</h4><p></p></div></div>
+    <div class="cos"></div>
+  </div>
+  <footer><button class="back" data-to="campaign">Back</button><button class="watch ghost" title="Both sides played by the computer">Watch it</button><button class="go">Begin the assault</button></footer>
+</section>
+
+<!-- skirmish -->
+<section class="screen paper" id="skirm" hidden>
+  <header><h2>Skirmish</h2><p>A random battlefield. Pick the armies and the generals.</p></header>
+  <div class="form">
+    <fieldset><legend>Side 1</legend>
+      <label>Army <select id="s1nat"></select></label><label>General <select id="s1co"></select></label>
+      <label>Commander <select id="s1ai"><option value="human">You</option><option value="ai">Computer</option></select></label></fieldset>
+    <fieldset><legend>Side 2</legend>
+      <label>Army <select id="s2nat"></select></label><label>General <select id="s2co"></select></label>
+      <label>Commander <select id="s2ai"><option value="ai">Computer</option><option value="human">Second player</option></select></label>
+      <label>Temperament <select id="s2pers"><option value="">As the general</option><option value="aggressive">Aggressive</option><option value="methodical">Methodical</option><option value="cautious">Cautious</option><option value="opportunist">Opportunist</option></select></label></fieldset>
+    <fieldset><legend>Battlefield</legend>
+      <label>Terrain <select id="stheme"></select></label>
+      <label>Size <select id="ssize"><option value="s">Small</option><option value="m" selected>Medium</option><option value="l">Large</option><option value="xl">Huge</option></select></label>
+      <label>Fog of war <select id="sfog"><option value="off">Off</option><option value="on">On</option></select></label>
+      <label>H-Hour <select id="shour"><option value="5">05:00 dawn</option><option value="9" selected>09:00 morning</option><option value="16">16:00 afternoon</option><option value="20">20:00 dusk</option><option value="23">23:00 night</option></select></label>
+      <label>Starting funds <select id="sfunds"><option>0</option><option selected>5000</option><option>10000</option><option>20000</option></select></label></fieldset>
+  </div>
+  <footer><button class="back">Back</button><button id="sgo">Deploy</button></footer>
+</section>
+
+<!-- map builder -->
+<section class="screen" id="editor" hidden>
+  <div class="edbar">
+    <b class="edtitle">Map Builder</b>
+    <button id="ednew">New</button><select id="edload"></select><button id="edsave">Save</button><button id="edexport">Share code</button><button id="edimport">Import</button>
+    <span class="sep"></span><button id="edundo" title="Ctrl+Z">Undo</button><button id="edredo" title="Ctrl+Y">Redo</button><button id="edfit" title="F">Fit</button>
+    <span class="sep"></span><button id="edquick" title="Place a standard force next to each HQ">Quick armies</button><button id="edplay" class="go">Play it</button><button id="edhot" title="Two players on one screen">Hotseat</button><button id="edwatch" title="Computer against computer">Watch</button><button id="edbal" title="AI testers play the map nine times and report on balance">Balance check</button><button id="edwaves">Last Stand</button>
+    <span class="grow"></span><button id="edback">Back</button>
+  </div>
+  <div class="edbody"><aside id="edpal"></aside><div class="edview"><canvas id="edcv"></canvas><div id="edinfo"></div><div id="edtoast" hidden></div>
+    <div class="edhelp">Left-click paints · right-click picks up terrain · wheel zooms · Alt-drag or middle-drag pans · M mirrors</div></div></div>
+</section>
+
+<!-- last stand -->
+<section class="screen paper" id="laststand" hidden>
+  <header><h2>Last Stand</h2><p>Hold your HQ against wave after wave. Every wave is bigger than the last, with veterans, armour and then aircraft. Supplies arrive with each wave: spend them at your depots.</p></header>
+  <div class="form">
+    <fieldset><legend>Your army</legend>
+      <label>Army <select id="lsnat"></select></label><label>General <select id="lsco"></select></label>
+      <label>Starting funds <input type="number" id="lsfunds" min="0" max="200000" step="500" value="6000" list="fundlist"></label></fieldset>
+    <fieldset class="forcebox"><legend>Starting force</legend><label>Force <select class="forcemode"><option value="map">Standard</option><option value="custom">Choose your own</option></select></label><div class="forcegrid" hidden></div><p class="forcesum dim"></p></fieldset>
+    <fieldset><legend>The enemy</legend>
+      <label>Army <select id="lsenemy"></select></label>
+      <label>Difficulty <select id="lsdiff"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></label>
+      <label>Turns between waves <select id="lsevery"><option value="4">4: time to dig in</option><option value="3" selected>3</option><option value="2">2: relentless</option></select></label></fieldset>
+    <fieldset><legend>Battlefield</legend>
+      <label>Map <select id="lsmap"></select></label><p id="lsbest" class="dim"></p></fieldset>
+  </div>
+  <footer><button class="back">Back</button><button id="lsgo">Hold the line</button></footer>
+</section>
+
+<datalist id="fundlist"><option value="0"><option value="3000"><option value="6000"><option value="12000"><option value="25000"><option value="50000"></datalist>
+<!-- dead of night: zombie survival -->
+<section class="screen paper zedscreen" id="zombies" hidden>
+  <header><h2>Dead of Night</h2><p>Autumn 1944. Something came up out of the bunkers and the burial pits, and it does not care whose uniform it once wore. Hold your HQ until the dead stop coming. Every soldier they pull down gets up again on their side.</p></header>
+  <div class="form">
+    <fieldset><legend>The survivors</legend>
+      <label>Army <select id="znat"></select></label><label>Commander <select id="zco"></select></label>
+      <label>Starting funds <input type="number" id="zfunds" min="0" max="200000" step="500" value="6000" list="fundlist"></label></fieldset>
+    <fieldset class="forcebox"><legend>Starting force</legend><label>Force <select class="forcemode"><option value="map">Standard</option><option value="custom">Choose your own</option></select></label><div class="forcegrid" hidden></div><p class="forcesum dim"></p></fieldset>
+    <fieldset><legend>The night</legend>
+      <label>Difficulty <select id="zdiff"><option value="easy">Shamblers</option><option value="normal" selected>Normal</option><option value="hard">Nightmare</option></select></label>
+      <label>Turns between waves <select id="zevery"><option value="4">4: time to dig in</option><option value="3" selected>3</option><option value="2">2: they never stop</option></select></label>
+      <label>Darkness <select id="znight"><option value="endless" selected>Endless night: fog, no air support</option><option value="cycle">Dusk till dawn: the sun comes up at 05:00</option></select></label></fieldset>
+    <fieldset><legend>Where you make your stand</legend>
+      <label>Map <select id="zmap"></select></label><p id="zrec" class="dim"></p></fieldset>
+  </div>
+  <h3 class="zhead">What is coming</h3>
+  <div id="zbest" class="zbest"></div>
+  <footer><button class="back">Back</button><button id="zgo">Survive the night</button></footer>
+</section>
+
+<!-- the whole war on one map -->
+<section class="screen paper" id="warview" hidden>
+  <header><h2>The War, 1937–1945</h2><p>Every battle in the game. Red: taken. Gold: open to you. Grey: not yet reached. Click a battle to read its briefing.</p></header>
+  <div class="wvwrap"><canvas id="wvmap"></canvas><div id="wvtip" hidden></div></div>
+  <footer><button class="back">Back</button></footer>
+</section>
+
+<!-- service record -->
+<section class="screen paper" id="record" hidden>
+  <header><h2>Service Record</h2><p>Your war, in numbers and decorations.</p></header>
+  <div id="reclist"></div>
+  <footer><button class="back">Back</button></footer>
+</section>
+
+<!-- settings -->
+<section class="screen paper" id="settings" hidden>
+  <header><h2>Settings</h2></header>
+  <div class="form">
+    <fieldset><legend>Presentation</legend>
+      <label>German flags <select id="optflags"><option value="hist">Historical (1938–45 war ensign)</option><option value="balken">Balkenkreuz only</option></select></label>
+      <label class="ck"><input type="checkbox" id="optbattle"> Battle animations</label>
+      <label>Gore <select id="optgore"><option value="off">Off</option><option value="standard">Standard</option><option value="graphic">Graphic</option></select></label>
+      <label class="ck"><input type="checkbox" id="optfx"> Effects, weather and smoke</label>
+      <label>Difficulty <select id="optdiff"><option value="easy">Easy: the enemy fights 12% weaker</option><option value="normal">Normal</option><option value="hard">Hard: the enemy fights 10% stronger</option></select></label>
+      <label class="ck"><input type="checkbox" id="optfast"> Fast enemy turns</label>
+      <label class="ck"><input type="checkbox" id="opttips"> Field notes (first-time tips)</label></fieldset>
+    <fieldset><legend>Sound</legend>
+      <label class="ck"><input type="checkbox" id="optsound"> Weapon and battle sounds</label>
+      <label class="ck"><input type="checkbox" id="optmusic"> Period music</label>
+      <label>Master volume <input type="range" id="optvol" min="0" max="1" step=".05"></label>
+      <label>Music <input type="range" id="optmvol" min="0" max="1" step=".05"></label>
+      <label>Battlefield ambience <input type="range" id="optamb" min="0" max="1" step=".05"></label></fieldset>
+  </div>
+  <footer><button class="back">Cancel</button><button id="optsave">Save</button></footer>
+</section>
+
+<!-- help -->
+<section class="screen paper" id="help" hidden>
+  <header><h2>Field manual</h2></header>
+  <div class="manual">
+    <p><b>Orders.</b> Click a unit, then click where it should go. Choose <i>Fire</i>, <i>Capture</i>, <i>Clear obstacles</i>, <i>Unload</i> or <i>Wait</i>. Right-click or Esc steps back. Arrow keys and Enter work too; E ends the turn, M toggles the minimap, H asks your adviser for a suggested move. Click an enemy (or press R) to see what it can reach; press T, or the Danger button, to shade every tile any visible enemy could attack next turn. Drag to pan, scroll to zoom.</p>
+    <p><b>Terrain.</b> Stars are cover. Bocage hedgerows (3★) are miserable for tanks and wonderful for infantry. Bunkers give 4★, trenches 3★. Beaches, roads and marsh give none. Boats cannot pass beach obstacles; tanks crush wire but not hedgehogs. A unit that stops in a minefield loses 2–3 HP.</p>
+    <p><b>Engineers.</b> Combat engineers blow lanes through obstacles, wire and minefields next to them, and their flamethrowers and charges are deadly against bunkers.</p>
+    <p><b>Fixed defences.</b> MG 42 nests and 88 mm casemates never move. Hit them with artillery, naval gunfire, engineers and aircraft rather than walking into them.</p>
+    <p><b>Damage.</b> Units fight at strength: a unit with 5 HP hits half as hard. Direct-fire units take return fire; artillery, mortars and rockets never do but cannot move and fire in one turn.</p>
+    <p><b>Veterans.</b> Units earn experience for damage, kills and captures: Veteran, Elite, then Legendary, each stronger. Ranked survivors of a victory join the core force and deploy in later missions.</p>
+    <p><b>Towns and depots.</b> Infantry capture (20 points; each HP is one point a turn). Each property pays 1,000 a day. Units resting on your property repair 2 HP.</p>
+    <p><b>Seeing what you can hit.</b> When you select a unit, blue shows where it can move and red shows everything it could fire on this turn. Enemies inside the red are outlined with the damage they would take, or KILL. Press R (or Y on a controller) over any unit to see its danger zone.</p>
+    <p><b>Time.</b> Each turn is a slice of the real battle: an hour on Omaha, four hours at Pegasus Bridge, a day at Bastogne. Nights darken the map: aircraft are grounded and you see only what your units can see. Some missions have fog of war all the time.</p>
+    <p><b>Digging in, weather and bridges.</b> Infantry and guns that hold position for a turn dig in for an extra star of cover. Snow slows vehicles off the roads; rain makes mud for wheels. Engineers can blow a bridge or build a Bailey bridge over a river for 3,000.</p>
+    <p><b>Controllers.</b> D-pad or left stick moves, A selects, B cancels, X opens the general's menu, Y shows a unit's range (on empty ground, the whole danger zone), LB/RB jump between units still to move, triggers zoom, the right stick pans, Start ends the turn. Tab cycles units on the keyboard.</p>
+    <p><b>The war at sea.</b> Submerged U-boats are invisible until an escort's asdic finds them within two squares, an aircraft passes overhead or any ship comes alongside. A U-boat that fires gives itself away until its next turn. Escorts (corvettes, sloops and destroyer escorts) and torpedo bombers are the U-boat killers. Battleships fire 2–7 squares; carriers launch air strikes up to 8 squares away, but not at night. Convoys win by getting enough merchant ships to the far edge.</p>
+    <p><b>Jungle, paddies and reefs.</b> Jungle hides infantry and stops wheels; rice paddies give no cover. Landing craft ground on coral reefs: infantry must wade, but amtracs crawl over.</p>
+    <p><b>Generals' temperaments.</b> The computer plays each general in character: Rommel, Patton and Yamashita attack hard; Model, Heinrici and Kuribayashi stay in cover and make you come to them; opportunists like Manstein and Chuikov grab towns and pick off stragglers.</p>
+    <p><b>Last Stand.</b> Hold your HQ against endless waves, each bigger than the last, with veterans, then armour, then aircraft. Supplies arrive with every wave; build reinforcements at your depots. Your best on every map is kept.</p>
+    <p><b>Dead of Night.</b> A zombie survival mode. The dead come in waves from the far edge, then the flanks, then from everywhere: shambling Walkers, Runners, bile-spitting Spitters, Brutes that tear open tanks, and an Abomination every fifth wave. Any of your infantry they kill gets up again on their side, so keep them at arm's length with machine guns, artillery and armour.</p>
+    <p><b>Map Builder.</b> Paint terrain, towns and units with the game's own tiles. Brush, rectangle, fill and eyedropper; right-click picks up terrain; turn on mirroring for fair two-player maps. Save maps in your browser, share them as a code, play them, watch two computer generals fight on them, or use them for a Last Stand.</p>
+    <p><b>Multiplayer.</b> Hotseat on one machine, turn codes by any messenger, or online on claude.ai with a five-letter game code.</p>    <p><b>Generals.</b> Every general has a permanent effect and two powers: bombardments, airborne drops, reinforcements, or armour that acts twice. Fighting fills the star meter; click a portrait to read them.</p>
+  </div>
+  <footer><button class="back">Back</button></footer>
+</section>
+
+<!-- armoury -->
+<section class="screen paper" id="armoury" hidden>
+  <header><h2>Archive</h2><p>The real machines, generals and battles behind the game, 1937–45.</p></header>
+  <nav id="arctabs"><button data-t="arms">Armoury</button><button data-t="gens">Generals</button><button data-t="bats">Battles</button><button data-t="gloss">Glossary</button></nav>
+  <nav id="armtabs"></nav>
+  <div id="armlist"></div>
+  <footer><button class="back">Back</button></footer>
+</section>
+
+<!-- aftermath: what your result means, and what really happened -->
+<section class="screen paper" id="after" hidden>
+  <div class="folder">
+    <div class="stampmark"></div>
+    <p class="opline"></p>
+    <h2></h2>
+    <canvas class="warmap"></canvas>
+    <h4 class="nexth"></h4><p class="story next"></p>
+    <h4>What really happened</h4><p class="story real"></p>
+    <div class="fates"></div>
+  </div>
+  <footer><button class="back" data-to="campaign">Campaign</button><button class="go">Next battle</button></footer>
+</section>
+
+<!-- multiplayer -->
+<section class="screen paper" id="multi" hidden>
+  <header><h2>Multiplayer</h2><p>Play a person instead of the computer.</p></header>
+  <div class="mpgrid">
+    <button class="mpcard" id="mphot"><b>Hotseat</b><span>Two players, one screen or two controllers. The map is hidden while you hand over.</span></button>
+    <button class="mpcard" id="mpcode"><b>Turn code</b><span>Play by mail: after each turn you get a code to send by any messenger. Paste your opponent's code here.</span></button>
+    <button class="mpcard" id="mponline"><b>Online</b><span>Create a game on claude.ai, share its five-letter code, and turns sync live with the opponent's moves replayed.</span></button>
+  </div>
+  <footer><button class="back">Back</button></footer>
+</section>
+<section class="screen paper" id="online" hidden>
+  <header><h2>Online</h2><p id="netstatus"></p></header>
+  <div id="netbox" hidden>
+    <div class="form">
+      <fieldset><legend>Create a game</legend>
+        <label>Battle <select id="netmission"></select></label>
+        <label>You command <select id="netseat"><option value="1">Side 1 (the campaign's player side)</option><option value="2">Side 2</option></select></label>
+        <button id="netcreate">Create and get a code</button></fieldset>
+      <fieldset><legend>Join a game</legend>
+        <label>Game code <input id="netcode" maxlength="5" placeholder="ABCDE" autocomplete="off"></label>
+        <button id="netjoin">Join</button></fieldset>
+    </div>
+    <header class="sub"><h3>Your games</h3></header>
+    <div id="netgames"></div>
+  </div>
+  <footer><button class="back" data-to="multi">Back</button></footer>
+</section>
+
+<!-- jukebox -->
+<section class="screen paper" id="jukebox" hidden>
+  <header><h2>Jukebox</h2><p>Period recordings in the public domain or under free licences. Untick a track to take it out of the in-game rotation.</p></header>
+  <div id="jukelist"></div>
+  <footer><button class="back">Back</button></footer>
+</section>
+
+<!-- credits -->
+<section class="screen paper" id="credits" hidden>
+  <header><h2>Credits</h2></header>
+  <div class="manual" id="credlist"></div>
+  <footer><button class="back">Back</button></footer>
+</section>
+
+<!-- in-game HUD -->
+<section class="screen" id="gamehud" hidden>
+  <div id="top">
+    <button class="co" id="co1"><span class="pt"></span><span class="cobody"><span class="nm"></span><span class="nat"></span><span class="fund"></span><span class="meter"></span><span class="pw"></span></span></button>
+    <div class="mid"><b id="day"></b><small id="turnno"></small><small id="goal"></small></div>
+    <button class="co right" id="co2"><span class="pt"></span><span class="cobody"><span class="nm"></span><span class="nat"></span><span class="fund"></span><span class="meter"></span><span class="pw"></span></span></button>
+  </div>
+  <canvas id="minimap" title="Minimap: click to move the view (M hides it)"></canvas>
+  <div id="bottom">
+    <div id="tinfo"></div>
+    <div id="uinfo" hidden></div>
+    <div class="acts"><button id="ffwd" hidden title="Speed up the enemy turn">»</button><button id="cop" hidden></button><button id="scop" hidden></button><button id="danger" title="Danger zone: show every tile the enemy can hit next turn (T)" aria-pressed="false">Danger</button><button id="endturn">End turn</button><button id="quit" class="ghost">Menu</button></div>
+  </div>
+  <div id="forecast" hidden></div>
+</section>
+<div id="menu" hidden></div>
+<div id="banner"></div>
+<div id="dialog" hidden><span class="pt"></span><div><b class="who"></b><p class="txt"></p><small>click to continue</small></div></div>
+<div id="coinfo" hidden><span class="pt"></span><div class="txt"></div></div>
+<div id="powercut" hidden><div class="stripe"></div><span class="pt"></span><div class="pc"><small class="lv"></small><b class="nm"></b><em class="q"></em><span class="ds"></span></div></div>
+<div id="battlewrap" hidden><canvas id="battle"></canvas></div>
+<div id="result" hidden><div class="card"><h2></h2><p class="why"></p><div class="score"></div><div class="st"></div><div class="vets"></div><button id="resultok">Continue</button></div></div>
+<div id="nowplaying"></div>
+<div id="tip" hidden></div>
+<div id="handoff" hidden><span class="pt"></span><h2></h2><p></p><small>Click or press A to begin</small></div>
+<div id="codebox" hidden><div class="card"><h3></h3><p></p><textarea id="codetext" spellcheck="false"></textarea><small></small><div class="row"><button class="cancel"></button><button class="ok"></button></div></div></div>
+<div id="netwait" hidden><b></b><span class="dots"></span></div>
+<script>
+/*__JS__*/
+boot();
+</script>
