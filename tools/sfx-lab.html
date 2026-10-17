@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>SFX lab</title>
+<style>body{font:13px/1.4 monospace;background:#1b1b17;color:#e8e0c8;margin:16px}button{font:inherit;margin:1px}td{padding:2px 8px;vertical-align:top}tr:nth-child(odd){background:#24241e}</style></head>
+<body>
+<h3>SFX lab: every sample in sfx/, split into takes on silence. Click a take to hear it.</h3>
+<table id="t"></table>
+<script>
+/* Analyses each sample: takes (split on 120 ms of near-silence), peak dB and brightness (zero-crossing rate, Hz).
+   window.LAB holds the results for automated checks. */
+const ctx = new AudioContext(), LAB = window.LAB = {};
+function takes(buf, gapMs = 120, floorDb = -32) {
+  const d = buf.getChannelData(0), sr = buf.sampleRate, win = Math.round(sr * .01), env = [];
+  let peak = 0; for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+  for (let i = 0; i < d.length; i += win) { let s = 0; for (let j = i; j < Math.min(d.length, i + win); j++) s += d[j] * d[j]; env.push(Math.sqrt(s / win)); }
+  const thr = peak * Math.pow(10, floorDb / 20), gap = gapMs / 10, out = [];
+  let st = -1, quiet = 0;
+  env.forEach((v, i) => { if (v > thr) { if (st < 0) st = i; quiet = 0; } else if (st >= 0 && ++quiet > gap) { out.push([st, i - quiet]); st = -1; } });
+  if (st >= 0) out.push([st, env.length - 1]);
+  return out.filter(([a, b]) => b - a >= 3).map(([a, b]) => {
+    let pk = 0, zc = 0; const s0 = a * win, s1 = Math.min(d.length, (b + 1) * win);
+    for (let i = s0; i < s1; i++) { pk = Math.max(pk, Math.abs(d[i])); if (i > s0 && (d[i] >= 0) !== (d[i - 1] >= 0)) zc++; }
+    return {t:+(a / 100).toFixed(2), len:+((b - a + 1) / 100).toFixed(2), db:Math.round(20 * Math.log10(pk || 1e-9)), zcr:Math.round(zc / 2 / ((s1 - s0) / sr))};
+  });
+}
+function play(buf, t, len) { const s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination); s.start(0, t, len); }
+(async () => {
+  const list = await (await fetch('sfx-sources.json')).json();
+  for (const it of list) {
+    try {
+      const buf = await ctx.decodeAudioData(await (await fetch('../sfx/' + it.file)).arrayBuffer());
+      const tk = takes(buf); LAB[it.file] = {dur:+buf.duration.toFixed(2), ch:buf.numberOfChannels, takes:tk};
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><b>${it.file}</b><br>${it.title}<br>${it.lic} · ${it.user}</td><td>${buf.duration.toFixed(1)}s</td><td></td>`;
+      const td = tr.lastChild, all = document.createElement('button'); all.textContent = '▶ all'; all.onclick = () => play(buf, 0); td.append(all);
+      tk.slice(0, 24).forEach((k, i) => { const b = document.createElement('button'); b.textContent = `${i + 1}: ${k.t}s +${k.len} ${k.db}dB ${k.zcr}Hz`; b.onclick = () => play(buf, k.t, k.len + .05); td.append(b); });
+      document.getElementById('t').append(tr);
+    } catch (e) { LAB[it.file] = {err:String(e)}; }
+  }
+  LAB.done = true;
+})();
+</script>
+</body></html>

@@ -122,7 +122,12 @@ function playTrack(t, at = 0) {
 function musicToggle() { const el = MUSIC.els[MUSIC.cur]; if (!SET.music) MUSIC.els.forEach(e => e && e.pause()); else if (MUSIC.playing && el && el.src) { el.volume = musicVol(); el.play().catch(() => {}); } else if (MUSIC.mood) musicMood(MUSIC.mood, true); }
 
 /* ---------- soundscape ---------- */
-const AMB = {on:false, nodes:{}, next:{}, timer:null};
+const AMB = {on:false, nodes:{}, next:{}, timer:null, loops:{}, heat:0};
+function ambLoop(name, level, now) {                    // a recorded bed, looping, faded to the level the scene calls for
+  let L = AMB.loops[name];
+  if (!L) { if (!level || !AU.samples[name]) return; const c = AU.ctx, s = c.createBufferSource(), g = c.createGain(); s.buffer = AU.samples[name]; s.loop = true; g.gain.value = 0; s.connect(g); g.connect(AMB.bed); s.start(now, Math.random() * s.buffer.duration); L = AMB.loops[name] = {s, g, pk:(AU.takes[name] || [{pk:1}])[0].pk}; }
+  L.g.gain.setTargetAtTime(level * Math.min(3, .5 / L.pk), now, 2);
+}
 function ambStart() {
   if (AMB.on || !AU.ctx) return; AMB.on = true;
   const c = AU.ctx, bed = c.createGain(); bed.gain.value = 0; bed.connect(AU.master); AMB.bed = bed;
@@ -163,7 +168,22 @@ function ambTick() {
   if (s.night && !s.snow && due('cricket')) { AMB.next.cricket = now + .35 + Math.random() * .3; for (let i = 0; i < 3; i++) tone(now + i * .045, {f:4300 + Math.random() * 200, dur:.03, gain:.012, type:'sine', dest:AMB.bed}); }
   // fire crackle in ruins or around fresh wrecks
   if ((s.n.urban > .3 || s.wrecks) && due('fire')) { AMB.next.fire = now + .08 + Math.random() * .25; noiseHit(now, {dur:.015 + Math.random() * .02, hp:1800, gain:.05 + Math.random() * .05, dest:AMB.bed}); }
-  // the distant war: guns rumbling beyond the horizon, now and then a far-off MG burst
+  // recorded beds: the low roar of a battlefield, desert wind on the arid maps
+  const arid = ['desert', 'tunisia'].includes(G.theme);
+  ambLoop('amb-battlefield', s.battle ? .1 + .25 * AMB.heat : 0, now);
+  ambLoop('amb-desert-wind', arid && !s.rain ? .5 : 0, now);
+  AMB.heat = Math.max(0, AMB.heat - .004);
+  // the distant war, recorded: rifle and MG fire across the valley, a barrage on the next ridge, bombers working over a town; busier as the fighting heats up
+  if (s.battle && due('far') && have('amb-ww2-gunfire')) { AMB.next.far = now + (2.5 + Math.random() * 8) * (1 - .55 * AMB.heat) * (s.night ? 1.6 : 1);
+    const r = Math.random(), far = 600 + Math.random() * 900, o = {dest:AMB.bed, lp:far, wet:0, rate:.85 + Math.random() * .2};
+    if (r < .3) samp('amb-ww2-gunfire', now, {...o, gain:.55, len:5, lp:far * 2});
+    else if (r < .5) samp('amb-gunfire', now, {...o, gain:.35, len:3});
+    else if (r < .7) samp(pickOf(['amb-distant-explosions', 'explosion-distant', 'explosion-muffled']), now, {...o, gain:.6, len:5, lp:400 + Math.random() * 300});
+    else if (r < .82) samp('amb-war-loop', now, {...o, gain:.4, len:4});
+    else if (r < .92) samp('amb-bombing', now, {...o, gain:.55, off:'rand', len:7, fade:2, fadeIn:1.5, lp:300});
+    else samp(pickOf(['screams', 'pain-grunts']), now, {...o, gain:.18, lp:900, len:2});   // somewhere out there, a man calling for help
+    return; }
+  // the distant war, modelled (when the recordings are not available): guns rumbling beyond the horizon, now and then a far-off MG burst
   if (s.battle && due('far')) { AMB.next.far = now + 3 + Math.random() * 9;
     const kind = Math.random();
     if (kind < .65) { for (let i = 0; i < 1 + (Math.random() * 3 | 0); i++) { const t = now + i * (.3 + Math.random() * .8); noiseHit(t, {dur:1.8, lp:140, gain:.18, attack:.05, dest:AMB.bed}); thump(t, {f0:60, f1:25, dur:1.2, gain:.12, dest:AMB.bed}); } }

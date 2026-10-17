@@ -1,0 +1,524 @@
+﻿[
+    {
+        "file":  "garand-1.mp3",
+        "id":  "386842",
+        "user":  "nioczkus",
+        "title":  "M1 Garand Rifle",
+        "lic":  "CC0",
+        "dur":  2.7,
+        "kb":  61
+    },
+    {
+        "file":  "garand-2.mp3",
+        "id":  "385785",
+        "user":  "Rijam",
+        "title":  "Rifle Shot (M1 Garand)",
+        "lic":  "CC0",
+        "dur":  2.8,
+        "kb":  64
+    },
+    {
+        "file":  "garand-ping.mp3",
+        "id":  "725398",
+        "user":  "serøutōnin--deprivəd",
+        "title":  "An M1 Garand clip being ejected w/ ping",
+        "lic":  "CC0",
+        "dur":  1.2,
+        "kb":  29
+    },
+    {
+        "file":  "enfield-shot.mp3",
+        "id":  "450852",
+        "user":  "kyles",
+        "title":  "gun lee enfield 303 rifle fire shot loud badass crispy.wav",
+        "lic":  "CC0",
+        "dur":  0.8,
+        "kb":  20
+    },
+    {
+        "file":  "mosin-bolt.mp3",
+        "id":  "263459",
+        "user":  "rammbostein",
+        "title":  "Mosin Nagant Bolt.wav",
+        "lic":  "CC0",
+        "dur":  6.5,
+        "kb":  87
+    },
+    {
+        "file":  "thompson-shot.mp3",
+        "id":  "258198",
+        "user":  "wadaltmon",
+        "title":  "Thompson SMG Shot",
+        "lic":  "CC0",
+        "dur":  0.2,
+        "kb":  8
+    },
+    {
+        "file":  "ppsh-short.mp3",
+        "id":  "579531",
+        "user":  "coolabc",
+        "title":  "PPSh Shooting.wav",
+        "lic":  "CC0",
+        "dur":  0.6,
+        "kb":  12
+    },
+    {
+        "file":  "ppsh-burst.mp3",
+        "id":  "338323",
+        "user":  "Lubini",
+        "title":  "PPSh-41 - Soviet Submachine Gun.wav",
+        "lic":  "CC BY 4.0",
+        "dur":  8.3,
+        "kb":  151
+    },
+    {
+        "file":  "hmg-burst.mp3",
+        "id":  "165394",
+        "user":  "ShawnyBoy",
+        "title":  "Heavy Machine Gun",
+        "lic":  "CC0",
+        "dur":  3.1,
+        "kb":  72
+    },
+    {
+        "file":  "mg-fast.mp3",
+        "id":  "165393",
+        "user":  "ShawnyBoy",
+        "title":  "Machine Gun Shots Fast",
+        "lic":  "CC0",
+        "dur":  2.1,
+        "kb":  52
+    },
+    {
+        "file":  "mg-heavy-burst.mp3",
+        "id":  "39071",
+        "user":  "alienbomb",
+        "title":  "heavy.burst.wav",
+        "lic":  "CC0",
+        "dur":  0.9,
+        "kb":  17
+    },
+    {
+        "file":  "cal50.mp3",
+        "id":  "239138",
+        "user":  "qubodup",
+        "title":  "50 Cal MG",
+        "lic":  "CC0",
+        "dur":  3.7,
+        "kb":  64
+    },
+    {
+        "file":  "cal50-avenger.mp3",
+        "id":  "160355",
+        "user":  "qubodup",
+        "title":  "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+        "lic":  "CC0",
+        "dur":  6.3,
+        "kb":  119
+    },
+    {
+        "file":  "tank-move.mp3",
+        "id":  "329800",
+        "user":  "greatmganga",
+        "title":  "t26_moving_01.wav",
+        "lic":  "CC0",
+        "dur":  14.4,
+        "kb":  320
+    },
+    {
+        "file":  "tracks.mp3",
+        "id":  "121531",
+        "user":  "cognito perceptu",
+        "title":  "tracked vehicle.wav",
+        "lic":  "CC0",
+        "dur":  9.4,
+        "kb":  211
+    },
+    {
+        "file":  "tank-engine.mp3",
+        "id":  "187676",
+        "user":  "qubodup",
+        "title":  "Driving Tank Engine.flac",
+        "lic":  "CC0",
+        "dur":  5.7,
+        "kb":  103
+    },
+    {
+        "file":  "tank-fire.mp3",
+        "id":  "127845",
+        "user":  "GaryQ",
+        "title":  "Tank fire Mixed.wav",
+        "lic":  "CC0",
+        "dur":  4.4,
+        "kb":  103
+    },
+    {
+        "file":  "tank-shots.mp3",
+        "id":  "239135",
+        "user":  "qubodup",
+        "title":  "Tank Shots",
+        "lic":  "CC0",
+        "dur":  10.9,
+        "kb":  196
+    },
+    {
+        "file":  "cannon-shot.mp3",
+        "id":  "187767",
+        "user":  "qubodup",
+        "title":  "Cannon Shot",
+        "lic":  "CC0",
+        "dur":  12.3,
+        "kb":  254
+    },
+    {
+        "file":  "cannon-2.mp3",
+        "id":  "448002",
+        "user":  "Kneeling",
+        "title":  "cannon.mp3",
+        "lic":  "CC0",
+        "dur":  5.4,
+        "kb":  125
+    },
+    {
+        "file":  "artillery-shot.mp3",
+        "id":  "441373",
+        "user":  "LilMati",
+        "title":  "Heavy Artillery Shot",
+        "lic":  "CC0",
+        "dur":  0.5,
+        "kb":  13
+    },
+    {
+        "file":  "field-gun.mp3",
+        "id":  "702245",
+        "user":  "InMotionAudio",
+        "title":  "GUNArtl_69thFieldArtilleryGun01_InMotionAudio_FREESampleSunday.wav",
+        "lic":  "CC0",
+        "dur":  2.1,
+        "kb":  38
+    },
+    {
+        "file":  "incoming-1.mp3",
+        "id":  "241840",
+        "user":  "Zagge28",
+        "title":  "Incoming mortar 1",
+        "lic":  "CC0",
+        "dur":  1.7,
+        "kb":  38
+    },
+    {
+        "file":  "incoming-4.mp3",
+        "id":  "241837",
+        "user":  "Zagge28",
+        "title":  "Incoming mortar 4",
+        "lic":  "CC0",
+        "dur":  1.6,
+        "kb":  37
+    },
+    {
+        "file":  "incoming-artillery.mp3",
+        "id":  "170991",
+        "user":  "bendodge",
+        "title":  "Incoming Artillery.wav",
+        "lic":  "CC BY 3.0",
+        "dur":  13.6,
+        "kb":  311
+    },
+    {
+        "file":  "explosion-1.mp3",
+        "id":  "235968",
+        "user":  "tommccann",
+        "title":  "Explosion_01.wav",
+        "lic":  "CC0",
+        "dur":  7.8,
+        "kb":  177
+    },
+    {
+        "file":  "explosion-2.mp3",
+        "id":  "182429",
+        "user":  "qubodup",
+        "title":  "Explosion",
+        "lic":  "CC0",
+        "dur":  3,
+        "kb":  65
+    },
+    {
+        "file":  "explosion-muffled.mp3",
+        "id":  "149966",
+        "user":  "NenadSimic",
+        "title":  "Muffled Distant Explosion",
+        "lic":  "CC0",
+        "dur":  5.1,
+        "kb":  108
+    },
+    {
+        "file":  "explosion-distant.mp3",
+        "id":  "209769",
+        "user":  "Johnnyfarmer",
+        "title":  "Explosion Distant ",
+        "lic":  "CC0",
+        "dur":  10.9,
+        "kb":  151
+    },
+    {
+        "file":  "explosion-debris.mp3",
+        "id":  "108641",
+        "user":  "juskiddink",
+        "title":  "Nearby explosion with debris.wav",
+        "lic":  "CC BY 4.0",
+        "dur":  4.1,
+        "kb":  84
+    },
+    {
+        "file":  "ricochet-1.mp3",
+        "id":  "30932",
+        "user":  "aust_paul",
+        "title":  "bullet ricochet.wav",
+        "lic":  "CC0",
+        "dur":  2.4,
+        "kb":  53
+    },
+    {
+        "file":  "ricochet-2.mp3",
+        "id":  "148840",
+        "user":  "cedarstudios",
+        "title":  "ricochet.mp3",
+        "lic":  "CC0",
+        "dur":  1.8,
+        "kb":  43
+    },
+    {
+        "file":  "ricochet-3.mp3",
+        "id":  "213925",
+        "user":  "Diboz",
+        "title":  "pistol_riccochet.ogg",
+        "lic":  "CC0",
+        "dur":  2.6,
+        "kb":  60
+    },
+    {
+        "file":  "ricochet-metal.mp3",
+        "id":  "854335",
+        "user":  "mikiko850",
+        "title":  "Metal Bullet Ricochets",
+        "lic":  "CC BY 4.0",
+        "dur":  5.3,
+        "kb":  132
+    },
+    {
+        "file":  "bullet-impact.mp3",
+        "id":  "423107",
+        "user":  "OGsoundFX",
+        "title":  "Guns \u0026 Explosions Album - Bullet Impact 14.wav",
+        "lic":  "CC BY 4.0",
+        "dur":  0.8,
+        "kb":  19
+    },
+    {
+        "file":  "death-1.mp3",
+        "id":  "173126",
+        "user":  "Replix",
+        "title":  "Death sound (male)",
+        "lic":  "CC0",
+        "dur":  1.7,
+        "kb":  39
+    },
+    {
+        "file":  "death-2.mp3",
+        "id":  "163442",
+        "user":  "Under7dude",
+        "title":  "Man Dying",
+        "lic":  "CC0",
+        "dur":  1.6,
+        "kb":  39
+    },
+    {
+        "file":  "death-3.mp3",
+        "id":  "416838",
+        "user":  "tonsil5",
+        "title":  "Grunt2 - Death Pain.wav",
+        "lic":  "CC0",
+        "dur":  1.5,
+        "kb":  41
+    },
+    {
+        "file":  "death-4.mp3",
+        "id":  "416839",
+        "user":  "tonsil5",
+        "title":  "Grunt1 - Death Pain.wav",
+        "lic":  "CC0",
+        "dur":  1,
+        "kb":  25
+    },
+    {
+        "file":  "death-5.mp3",
+        "id":  "345456",
+        "user":  "Artmasterrich",
+        "title":  "Male_Death_04",
+        "lic":  "CC0",
+        "dur":  1,
+        "kb":  26
+    },
+    {
+        "file":  "screams.mp3",
+        "id":  "556976",
+        "user":  "marc3122",
+        "title":  "Male Screams [1]",
+        "lic":  "CC0",
+        "dur":  13.7,
+        "kb":  298
+    },
+    {
+        "file":  "pain-grunts.mp3",
+        "id":  "610998",
+        "user":  "unfa",
+        "title":  "Medium Male Pain Grunts",
+        "lic":  "CC0",
+        "dur":  24.4,
+        "kb":  551
+    },
+    {
+        "file":  "pain-mix.mp3",
+        "id":  "442288",
+        "user":  "rockittt",
+        "title":  "male pain sound effects.wav",
+        "lic":  "CC0",
+        "dur":  7.6,
+        "kb":  172
+    },
+    {
+        "file":  "pain-grunt.mp3",
+        "id":  "547209",
+        "user":  "MrFossy",
+        "title":  "Voice_AdultMale_PainGrunts_09.wav",
+        "lic":  "CC0",
+        "dur":  0.3,
+        "kb":  9
+    },
+    {
+        "file":  "boots-gravel.mp3",
+        "id":  "530589",
+        "user":  "Nox_Sound",
+        "title":  "Footsteps_Boots_Gritty_Ground_(Gravel).wav",
+        "lic":  "CC0",
+        "dur":  11.4,
+        "kb":  170
+    },
+    {
+        "file":  "boots-run.mp3",
+        "id":  "235470",
+        "user":  "jcdecha",
+        "title":  "Running_Boots_medium_speed.wav",
+        "lic":  "CC0",
+        "dur":  14.2,
+        "kb":  244
+    },
+    {
+        "file":  "truck-hum.mp3",
+        "id":  "182793",
+        "user":  "qubodup",
+        "title":  "Military Vehicle Humming.flac",
+        "lic":  "CC0",
+        "dur":  30,
+        "kb":  548
+    },
+    {
+        "file":  "jeep.mp3",
+        "id":  "234902",
+        "user":  "deleted_user_1995570",
+        "title":  "Jeep-CJ5-1965-final.mp3",
+        "lic":  "CC0",
+        "dur":  69.8,
+        "kb":  1526
+    },
+    {
+        "file":  "flamethrower.mp3",
+        "id":  "396890",
+        "user":  "pugaeme",
+        "title":  "Flamethrower",
+        "lic":  "CC BY 3.0",
+        "dur":  11.3,
+        "kb":  258
+    },
+    {
+        "file":  "amb-war-loop.mp3",
+        "id":  "239139",
+        "user":  "qubodup",
+        "title":  "War Ambience Loop",
+        "lic":  "CC0",
+        "dur":  23.8,
+        "kb":  545
+    },
+    {
+        "file":  "amb-battlefield.mp3",
+        "id":  "385895",
+        "user":  "banan_",
+        "title":  "BattleField Ambience (Loop)",
+        "lic":  "CC0",
+        "dur":  59.2,
+        "kb":  1281
+    },
+    {
+        "file":  "amb-distant-explosions.mp3",
+        "id":  "320788",
+        "user":  "Kostrava",
+        "title":  "distant explosions",
+        "lic":  "CC0",
+        "dur":  64,
+        "kb":  1411
+    },
+    {
+        "file":  "amb-gunfire.mp3",
+        "id":  "205588",
+        "user":  "qubodup",
+        "title":  "Gunfire",
+        "lic":  "CC0",
+        "dur":  73.7,
+        "kb":  1348
+    },
+    {
+        "file":  "amb-ww2-gunfire.mp3",
+        "id":  "170478",
+        "user":  "Cheeseheadburger",
+        "title":  "Distant WW2 Gunfire Kent.wav",
+        "lic":  "CC BY 4.0",
+        "dur":  68.8,
+        "kb":  1497
+    },
+    {
+        "file":  "amb-bombing.mp3",
+        "id":  "342136",
+        "user":  "Filo_Rossi",
+        "title":  "Distant Bombing",
+        "lic":  "CC BY 4.0",
+        "dur":  26.3,
+        "kb":  510
+    },
+    {
+        "file":  "amb-desert-wind.mp3",
+        "id":  "104320",
+        "user":  "Proxima4",
+        "title":  "Desert Simple.wav",
+        "lic":  "CC0",
+        "dur":  48,
+        "kb":  1094
+    },
+    {
+        "file":  "ship-horn.mp3",
+        "id":  "208714",
+        "user":  "monotraum",
+        "title":  "ship horn.wav",
+        "lic":  "CC0",
+        "dur":  34.4,
+        "kb":  583
+    },
+    {
+        "file":  "flak-shot.mp3",
+        "id":  "104399",
+        "user":  "kantouth",
+        "title":  "Flak_Shot.wav",
+        "lic":  "CC BY 4.0",
+        "dur":  0.2,
+        "kb":  7
+    }
+]

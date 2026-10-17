@@ -232,11 +232,15 @@ function say(coId, text) {
   if (FAST) return Promise.resolve();
   return new Promise(res => {
     const d = $('#dialog'); d.querySelector('.pt').replaceChildren(portraitCanvas(coId, 1)); d.querySelector('.who').textContent = CO[coId].rank + ' ' + CO[coId].n;
-    d.querySelector('.txt').textContent = text; d.hidden = false;
-    const close = () => { d.hidden = true; d.removeEventListener('click', close); removeEventListener('keydown', key); res(); };
+    const txt = d.querySelector('.txt'); txt.textContent = ''; d.hidden = false;
+    // he speaks: the line types out in time with his mumbling voice; a click finishes the line, a second click closes it
+    const v = babble(coId, text, {zed:CO[coId].nat === 'zed'}), ms = Math.max(400, Math.min(v ? v.dur * 1000 : 0, text.length * 45) || text.length * 18), t0 = performance.now();
+    let full = false; const tick = setInterval(() => { const n = Math.ceil(text.length * Math.min(1, (performance.now() - t0) / ms)); txt.textContent = text.slice(0, n); if (n >= text.length) { full = true; clearInterval(tick); } }, 30);
+    const finish = () => { clearInterval(tick); txt.textContent = text; full = true; if (v) v.stop(); };
+    const close = () => { if (!full) return finish(); finish(); d.hidden = true; d.removeEventListener('click', close); removeEventListener('keydown', key); res(); };
     const key = e => { if (['Enter', ' ', 'z', 'Z', 'Escape'].includes(e.key)) close(); };
     d.addEventListener('click', close); addEventListener('keydown', key);
-    if (G && (G.watch || (G.teams[1].ai && G.teams[2].ai))) setTimeout(() => { if (!d.hidden) close(); }, 2600 + text.length * 25);   // spectators are not asked to click
+    if (G && (G.watch || (G.teams[1].ai && G.teams[2].ai))) setTimeout(() => { if (!d.hidden) { finish(); close(); } }, 2600 + text.length * 25);   // spectators are not asked to click
   });
 }
 
@@ -254,6 +258,7 @@ async function animateMove(u, path) {
     if (u.d.sea || ['sea', 'river'].includes(terr(bx, by))) part({kind:'ring', x:wx, y:wy + 14, size:6, grow:20, life:600, col:'230,240,245'});
   }
   const [x, y] = path[path.length - 1]; u.x = x; u.y = y; delete u.rx; delete u.ry; u.moving = false;
+  if (path.length > 2 && Math.random() < .3) fxBark(u, 'move');                    // a word as they arrive
 }
 async function afterMove(u) {
   const m = mineCheck(u);
@@ -269,11 +274,10 @@ async function doAttack(u, t) {
   if (!FAST && !SET.battle) fxBark(u, 'atk');
   const res = attack(u, t);
   if (!FAST) {
-    if (SET.battle) { await battleScene(u, t, res, preA, preD); fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty}, res.killed); }
-    else { sfx(u.d.snd); await fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty}, res.killed); }
+    if (SET.battle) { await battleScene(u, t, res, preA, preD); fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty}, res.killed, {quiet:true}); }
+    else { const dk = res.killed && deathKind(t.d); await fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty, dk}, res.killed); if (res.killed) killSound(t.d, .05, dk); }
     fxText(tx, ty, '-' + (Math.ceil(preD / 10) - Math.max(0, Math.ceil(t.hp / 10))));
-    if (res.counter) { if (!SET.battle) { sfx(t.d.snd, .2); await fxAttackMap({...t, x:tx, y:ty}, {...u, x:ux, y:uy}, res.cKilled); } fxText(ux, uy, '-' + (Math.ceil(preA / 10) - Math.max(0, Math.ceil(u.hp / 10)))); }
-    if (res.killed || res.cKilled) sfx('boom', .3);
+    if (res.counter) { if (!SET.battle) { const dk = res.cKilled && deathKind(u.d); await sleep(200); await fxAttackMap({...t, x:tx, y:ty}, {...u, x:ux, y:uy, dk}, res.cKilled); if (res.cKilled) killSound(u.d, .05, dk); } fxText(ux, uy, '-' + (Math.ceil(preA / 10) - Math.max(0, Math.ceil(u.hp / 10)))); }
     if (res.killed && G.units.includes(u)) fxBark(u, 'kill');
     else if (G.units.includes(t) && t.hp <= 40) fxBark(t, 'hurt');
     else if (G.units.includes(u) && u.hp <= 30) fxBark(u, 'hurt');
@@ -283,7 +287,7 @@ async function doAttack(u, t) {
   return res;
 }
 async function doCapture(u) {
-  const r = capture(u); sfx('capture');
+  const r = capture(u); sfx('capture'); if (Math.random() < .7) fxBark(u, 'cap');
   fxText(u.x, u.y, r.done ? 'Captured!' : `${propAt(u.x, u.y).cap}/20`, '#f0d060');
   if (r.done) await sleep(400);
   return r;
@@ -564,7 +568,7 @@ function openBuild(p) {
   const roles = buildable(G.turn, kind);
   const items = roles.map(r => { const d = udef(T.nat, r), c = unitCost(G.turn, r);
     return {html:`<span class="bi"></span><span class="bn">${d.n}<small>${d.w} · move ${d.mv}${d.rng[1] ? ' · range ' + (d.rng[0] === d.rng[1] ? d.rng[0] : d.rng[0] + '–' + d.rng[1]) : ''}</small></span><span class="bc">${fmt(c)}</span>`, disabled:c > T.funds, role:r,
-      fn:() => { T.funds -= c; const u = spawn(G.turn, {role:r, x:p.x, y:p.y, hp:100}); u.done = true; u.moved = true; sfx('build'); closeMenu(); UI.mode = 'idle'; fx('smoke', p.x, p.y); hud(); }}; });
+      fn:() => { T.funds -= c; const u = spawn(G.turn, {role:r, x:p.x, y:p.y, hp:100}); u.done = true; u.moved = true; sfx('build'); closeMenu(); UI.mode = 'idle'; fx('smoke', p.x, p.y); hud(); if (Math.random() < .6) setTimeout(() => fxBark(u, 'new'), 500); }}; });
   items.push({label:'Close', fn:() => { closeMenu(); UI.mode = 'idle'; }});
   menuAt(items, p.x, p.y);
   const m = $('#menu'); m.classList.add('build');
@@ -822,21 +826,26 @@ function applySettings() {
 }
 function openCredits() {
   $('#credlist').innerHTML = '<h4>Music</h4>' + MUSIC.tracks.map(m => `<p><b>${m.title}</b><br>${m.by} · ${m.lic}</p>`).join('') +
-    '<h4>Recorded sound</h4>' + SFX_CREDITS.map(([a, b, c]) => `<p><b>${a}</b><br>${b} · ${c}</p>`).join('') +
-    '<p>All recordings from Wikimedia Commons. CC BY / CC BY-SA works are used under those licences; "Duet Musette" by Kevin MacLeod (incompetech.com), licensed under Creative Commons: By Attribution 3.0.</p>' +
+    '<h4>Recorded sound</h4>' + SFX_CREDITS.concat(typeof SFX_LIB_CREDITS !== 'undefined' ? SFX_LIB_CREDITS : []).map(([a, b, c]) => `<p><b>${a}</b><br>${b} · ${c}</p>`).join('') +
+    '<p>Music and the first three sounds from Wikimedia Commons; the rest of the sound library from Freesound.org. CC BY / CC BY-SA works are used under those licences; "Duet Musette" by Kevin MacLeod (incompetech.com), licensed under Creative Commons: By Attribution 3.0.</p>' +
     '<h4>History</h4><p>Unit designations, generals and dates follow the 1943–45 campaigns in Western Europe and on the Eastern Front. German flags can be switched to the Balkenkreuz in Settings.</p>';
   show('credits');
 }
 
 /* the Armoury: every army's equipment with its numbers and history */
 function openArmoury(nat) { openArchive('arms', nat); }
+/* the armoury tabs: several armies share a country, so each is named for its period or theatre */
+const ARMY_LABEL = {ger:'Germany 1943–45', ger40:'Germany 1939–43 & at sea', dak:'Afrika Korps 1941–43', us:'US Army, Europe 1943–45', usp:'US forces, Pacific 1941–45', uk:'Britain 1944–45', uk40:'Britain 1939–43, Malaya & at sea',
+  uk42:'Britain, Desert 1941–43', su:'Soviet Union 1943–45', su41:'Soviet Union 1941–42', fr:'Free France 1944', ffl:'Free French, Desert 1942', fr40:'France 1940', be:'Belgium 1940',
+  pl:'Poland 1939', jp:'Japan 1937–45', cn:'China 1937–45', it:'Italy 1940–43', zed:'The Dead'};
 /* the Archive: armoury, generals, battles and glossary */
 function openArchive(tab = 'arms', nat = 'ger') {
   document.querySelectorAll('#arctabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
   const tabs = $('#armtabs'), list = $('#armlist'); tabs.innerHTML = ''; list.innerHTML = ''; tabs.hidden = tab !== 'arms';
   list.className = tab;
   if (tab === 'arms') {
-    for (const [k, n] of Object.entries(NATION)) { const b = document.createElement('button'); b.className = k === nat ? 'on' : ''; b.append(flagCanvas(k, 24, 16), document.createTextNode(' ' + n.n)); b.onclick = () => { sfx('click'); openArchive('arms', k); }; tabs.append(b); }
+    for (const [k, n] of Object.entries(NATION)) { const b = document.createElement('button'); b.className = k === nat ? 'on' : ''; b.append(flagCanvas(k, 24, 16), document.createTextNode(' ' + (ARMY_LABEL[k] || n.n))); b.onclick = () => { sfx('click'); openArchive('arms', k); }; tabs.append(b); }
+    const note = document.createElement('p'); note.className = 'armnote'; note.textContent = 'Each army is shown as it was equipped at the time, so a country can appear more than once: Germany in 1939–43, in the desert and in 1943–45 fielded very different tanks.'; list.append(note);
     for (const r of ROLE_ORDER) {
       const d = udef(nat, r); if (!d) continue;
       const card = document.createElement('div'); card.className = 'armcard';

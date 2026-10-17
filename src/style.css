@@ -250,6 +250,7 @@ select, input[type=range] { font: inherit; background: var(--drab2); color: var(
 #armtabs button { display: flex; align-items: center; gap: 6px; background: var(--drab2); color: var(--ink); border: 1px solid var(--line); padding: 6px 12px; font-family: var(--display); font-size: 16px; }
 #armtabs button.on { border-color: var(--brass); background: var(--drab); }
 #armlist { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.armnote { grid-column: 1 / -1; margin: 0 0 4px; font-size: 14px; opacity: .8; font-style: italic; }
 .armcard { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; background: var(--paper); color: var(--paperink); padding: 10px; box-shadow: 0 3px 0 #0006; }
 .armcard canvas { image-rendering: pixelated; width: 96px; height: 96px; background: #7a9a4a33; }
 .armcard b { font-family: var(--display); font-size: 18px; display: block; }

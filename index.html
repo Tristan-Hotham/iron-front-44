@@ -257,6 +257,7 @@ select, input[type=range] { font: inherit; background: var(--drab2); color: var(
 #armtabs button { display: flex; align-items: center; gap: 6px; background: var(--drab2); color: var(--ink); border: 1px solid var(--line); padding: 6px 12px; font-family: var(--display); font-size: 16px; }
 #armtabs button.on { border-color: var(--brass); background: var(--drab); }
 #armlist { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.armnote { grid-column: 1 / -1; margin: 0 0 4px; font-size: 14px; opacity: .8; font-style: italic; }
 .armcard { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; background: var(--paper); color: var(--paperink); padding: 10px; box-shadow: 0 3px 0 #0006; }
 .armcard canvas { image-rendering: pixelated; width: 96px; height: 96px; background: #7a9a4a33; }
 .armcard b { font-family: var(--display); font-size: 18px; display: block; }
@@ -2958,21 +2959,63 @@ function auInit() {
 }
 function loadSamples() {
   if (AU.tried || location.protocol === 'file:') return; AU.tried = true;
-  for (const n of SFX_FILES) fetch('sfx/' + n).then(r => r.ok ? r.arrayBuffer() : null).then(b => b && AU.ctx.decodeAudioData(b)).then(buf => { if (buf) AU.samples[n.replace(/\.\w+$/, '')] = buf; }).catch(() => {});
+  for (const n of SFX_FILES.concat(SFX_LIB.map(n => n + '.mp3'))) fetch('sfx/' + n).then(r => r.ok ? r.arrayBuffer() : null).then(b => b && AU.ctx.decodeAudioData(b)).then(buf => { if (buf) { const k = n.replace(/\.\w+$/, ''); AU.samples[k] = buf; AU.takes[k] = splitTakes(buf); } }).catch(() => {});
 }
 const SFX_FILES = ['sexton-fire.mp3', 'sexton-move.mp3', 'merlin.mp3', 'spitfire.mp3'];
+/* the recorded library (Freesound, CC0 / CC BY: see CREDITS.md). Each file is split into takes on silence when it loads,
+   so a file of six screams gives six screams; every play picks a fresh take and nudges its pitch, so no two volleys sound alike */
+const SFX_LIB = ['garand-1', 'garand-2', 'garand-ping', 'enfield-shot', 'mosin-bolt', 'thompson-shot', 'ppsh-short', 'ppsh-burst', 'hmg-burst', 'mg-fast', 'mg-heavy-burst', 'cal50', 'cal50-avenger',
+  'tank-move', 'tracks', 'tank-engine', 'tank-fire', 'tank-shots', 'cannon-shot', 'cannon-2', 'artillery-shot', 'field-gun', 'incoming-1', 'incoming-4', 'incoming-artillery',
+  'explosion-1', 'explosion-2', 'explosion-muffled', 'explosion-distant', 'explosion-debris', 'ricochet-1', 'ricochet-2', 'ricochet-3', 'ricochet-metal', 'bullet-impact',
+  'death-1', 'death-2', 'death-3', 'death-4', 'death-5', 'screams', 'pain-grunts', 'pain-mix', 'pain-grunt', 'boots-gravel', 'boots-run', 'truck-hum', 'jeep', 'flamethrower',
+  'amb-war-loop', 'amb-battlefield', 'amb-distant-explosions', 'amb-gunfire', 'amb-ww2-gunfire', 'amb-bombing', 'amb-desert-wind', 'ship-horn', 'flak-shot'];
+AU.takes = {}; AU.last = {};
+function splitTakes(buf, gapMs = 120, floorDb = -32) {         // [{t, len, pk}]: sounds separated by 120 ms of near-silence, each with its reverb tail
+  const d = buf.getChannelData(0), sr = buf.sampleRate, win = Math.round(sr * .01), env = [];
+  let peak = 0; for (let i = 0; i < d.length; i += 4) peak = Math.max(peak, Math.abs(d[i]));
+  for (let i = 0; i < d.length; i += win) { let s = 0; for (let j = i; j < Math.min(d.length, i + win); j += 2) s += d[j] * d[j]; env.push(Math.sqrt(s / win * 2)); }
+  const thr = peak * Math.pow(10, floorDb / 20), gap = gapMs / 10, raw = [];
+  let st = -1, quiet = 0;
+  env.forEach((v, i) => { if (v > thr) { if (st < 0) st = i; quiet = 0; } else if (st >= 0 && ++quiet > gap) { raw.push([st, i - quiet]); st = -1; } });
+  if (st >= 0) raw.push([st, env.length - 1]);
+  const out = raw.filter(([a, b]) => b - a >= 3).map(([a, b], i, arr) => {
+    const next = arr[i + 1] ? arr[i + 1][0] : env.length, end = Math.min(next - 1, b + 40);
+    let pk = 0; for (let j = a * win; j < Math.min(d.length, (b + 1) * win); j += 2) pk = Math.max(pk, Math.abs(d[j]));
+    return {t:Math.max(0, a / 100 - .01), len:(end - a + 1) / 100, pk:pk || 1};
+  });
+  return out.length ? out : [{t:0, len:buf.duration, pk:peak || 1}];
+}
+const have = (...names) => names.every(n => AU.samples[n]);
+const pickOf = list => { const ok = list.filter(n => AU.samples[n]); return ok[Math.floor(Math.random() * ok.length)]; };
+/* play one take of a recorded sound. opts: take (index), len (cap, s), off (s into a long recording; 'rand' for a random slice),
+   gain, rate (default: a small random nudge), lp (low-pass: distance), wet (reverb), dest, norm (false keeps the recorded level) */
+function samp(name, t, o = {}) {
+  const buf = AU.samples[name]; if (!buf || !AU.ctx) return 0;
+  const c = AU.ctx, tk = AU.takes[name] || [{t:0, len:buf.duration, pk:1}];
+  let k; if (o.take != null) k = tk[Math.min(tk.length - 1, o.take)];
+  else { let i = Math.floor(Math.random() * tk.length); if (tk.length > 2 && i === AU.last[name]) i = (i + 1) % tk.length; AU.last[name] = i; k = tk[i]; }
+  let start = k.t, len = k.len;
+  if (o.off != null) { start = o.off === 'rand' ? Math.random() * Math.max(0, buf.duration - (o.len || 2)) : o.off; len = o.len || 2; }
+  else if (o.len) len = Math.min(len, o.len);
+  const rate = o.rate ?? (.94 + Math.random() * .12), dur = len / rate;
+  const s = c.createBufferSource(), g = c.createGain(); s.buffer = buf; s.playbackRate.value = rate;
+  const lvl = (o.gain ?? 1) * (o.norm === false ? 1 : Math.min(4, .7 / k.pk)), fo = Math.min(o.fade ?? .12, dur * .4);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + (o.fadeIn ?? .004)); g.gain.setValueAtTime(lvl, t + dur - fo); g.gain.linearRampToValueAtTime(0, t + dur);
+  let node = s; if (o.lp) { const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; s.connect(f); node = f; }
+  node.connect(g); g.connect(o.dest || out(1, o.wet ?? .15)); s.start(t, start, len + .05); s.stop(t + dur + .1);
+  return dur;
+}
 /* recorded samples standing in for a recipe: [file, start s, length s] */
 const SAMPLE_USE = {
-  howitzer:['sexton-fire', .2, 4.2],                    // Sexton self-propelled 25-pounder, a real WWII gun
   move_tread:['sexton-move', 1.5, 2.6],                 // its tracks and engine
   move_air:['spitfire', 9, 3.2],                        // Spitfire fly-past
   strafeUK:['merlin', 0, 2.2], strafeUS:['merlin', 0, 2.2], bombs:['merlin', 2, 2.2], rp3:['merlin', 4, 2.2],   // Rolls-Royce / Packard Merlin
 };
-const SAMPLE_LAYER = new Set(['strafeUK', 'strafeUS', 'bombs', 'rp3', 'howitzer']);    // sample plays under the modelled guns
+const SAMPLE_LAYER = new Set(['strafeUK', 'strafeUS', 'bombs', 'rp3']);           // the howitzer chooses between the Sexton and the library itself (SW.howitzer)    // sample plays under the modelled guns
 
 /* ---------- building blocks ---------- */
 function out(dry = 1, wet = 1) {
-  const g = AU.ctx.createGain(); g.gain.value = dry; g.connect(AU.sfx);
+  const g = AU.ctx.createGain(); g.gain.value = dry * (AU.scale || 1); g.connect(AU.sfx);
   if (wet) { const w = AU.ctx.createGain(); w.gain.value = wet; g.connect(w); w.connect(AU.verb); }
   return g;
 }
@@ -3010,12 +3053,13 @@ function cannon(t, size = 1, crack = 1) {           // tank gun: sharp crack, he
   thump(t, {f0:110 / Math.sqrt(size), f1:28, dur:.6 * size, gain:1});
 }
 function explosion(t, size = 1) {
+  if (AU.quiet) return;                               // shot(): the animation plays the detonation when the shell lands
   noiseHit(t, {dur:.9 * size, lp:700, gain:1.1 * Math.min(1.4, size), attack:.005});
   noiseHit(t + .03, {dur:1.6 * size, lp:180, gain:.8, attack:.03});
   thump(t, {f0:80, f1:22, dur:.9 * size, gain:1});
   for (let i = 0; i < 4 * size; i++) noiseHit(t + .1 + Math.random() * .5 * size, {dur:.06, hp:1500, gain:.12});   // debris
 }
-function whistle(t, dur = 1, f0 = 2000, f1 = 700) { tone(t, {f:f0, f1, dur, gain:.09, type:'sine', attack:.2}); }
+function whistle(t, dur = 1, f0 = 2000, f1 = 700) { if (AU.quiet) return; tone(t, {f:f0, f1, dur, gain:.09, type:'sine', attack:.2}); }
 function whoosh(t, dur = .6, f0 = 600, f1 = 2400, gain = .5) {
   const c = AU.ctx, s = c.createBufferSource(); s.buffer = AU.noise;
   const b = c.createBiquadFilter(); b.type = 'bandpass'; b.Q.value = 2; b.frequency.setValueAtTime(f0, t); b.frequency.exponentialRampToValueAtTime(f1, t + dur);
@@ -3055,7 +3099,7 @@ const WEAPON = {
   gun90(t) { cannon(t, 1.1, 1.5); explosion(t + .2, .65); },
   gun17pdr(t) { cannon(t, 1.1, 2); explosion(t + .15, .65); },
   gun122(t) { cannon(t, 1.5, 1.4); explosion(t + .25, .9); },
-  howitzer(t) { if (!AU.samples['sexton-fire']) cannon(t, 1.3, .8); whistle(t + .7, 1.1, 1900, 650); explosion(t + 1.8, 1); },
+  howitzer(t) { cannon(t, 1.3, .8); whistle(t + .7, 1.1, 1900, 650); explosion(t + 1.8, 1); },
   nebel(t) {                                                     // the "Screaming Mimi": six rockets rippled off
     for (let i = 0; i < 6; i++) { const x = t + i * .28;
       tone(x, {f:230, f1:420, dur:1.1, gain:.13, type:'sawtooth', vib:30, vibF:23}); noiseHit(x, {dur:1, bp:900, q:1.5, gain:.35, attack:.25}); }
@@ -3083,6 +3127,144 @@ const WEAPON = {
   barrage(t) { for (let i = 0; i < 6; i++) whistle(t + i * .12, .8, 2000 - i * 80, 600); for (let i = 0; i < 14; i++) explosion(t + .9 + i * .11, 1); },
   naval(t) { cannon(t, 1.8, .9); cannon(t + .35, 1.8, .9); whistle(t + 1, 1, 1500, 600); explosion(t + 2, 1.2); explosion(t + 2.3, 1); },
 };
+/* ---------- the recorded versions: real rifles, MGs, tank guns and artillery, built from the library ----------
+   Each returns false when its recordings are missing (offline, file://), and the modelled recipe above plays instead. */
+function rifles(t, n, span, rate = 1) { for (let i = 0; i < n; i++) samp(pickOf(['enfield-shot', 'garand-1', 'garand-2']), t + Math.random() * span, {len:.9, gain:.55, rate:rate * (.9 + Math.random() * .2)}); }
+function blast(t, size = 1) {                        // a shell landing: recorded detonation, scaled by calibre
+  if (AU.quiet) return;
+  const big = size >= 1.1;
+  samp(pickOf(big ? ['explosion-1', 'explosion-debris'] : ['explosion-2', 'explosion-debris']), t, {gain:.75 * Math.min(1.3, size), rate:(big ? .85 : 1.05) + Math.random() * .15, len:big ? 4 : 2.2});
+}
+function gunRec(t, kind, rate = 1) {
+  const pool = {small:['artillery-shot', 'field-gun'], mid:['tank-fire', 'tank-shots', 'cannon-2'], big:['cannon-shot', 'cannon-2', 'tank-shots']}[kind];
+  samp(pickOf(pool), t, {gain:1, rate:rate * (.94 + Math.random() * .1), len:kind === 'small' ? 1.4 : 2.6});
+}
+const SW = {
+  garand(t) { if (!have('garand-1')) return false; let x = t; for (let i = 0; i < 8; i++) { samp(pickOf(['garand-1', 'garand-2']), x, {len:.8, gain:.75}); x += .22 + Math.random() * .16; } samp('garand-ping', x + .05, {gain:.45, rate:1}); },
+  bar(t) { if (!have('thompson-shot')) return false; rifles(t, 2, .5); for (let i = 0; i < 9; i++) samp('thompson-shot', t + .55 + i * .11, {gain:.8, rate:.78 + Math.random() * .05, fade:.03}); },
+  bren(t) { if (!have('mg-heavy-burst')) return false; rifles(t, 3, .9); for (let b = 0; b < 3; b++) samp('mg-heavy-burst', t + .3 + b * .62, {len:.5, gain:.75, rate:.9 + Math.random() * .08}); },
+  mg34(t) { if (!have('hmg-burst')) return false; rifles(t, 3, .9, .95); samp('hmg-burst', t + .2, {len:1.4, gain:.8, rate:1.05}); },
+  mg42(t) { if (!have('mg-fast')) return false; rifles(t, 2, .6, .95); samp('mg-fast', t + .1, {gain:.9, rate:1.08}); },
+  dt(t) { if (!have('hmg-burst')) return false; rifles(t, 3, .9, .9); samp('hmg-burst', t + .25, {len:1.1, gain:.75, rate:.9}); },
+  ppsh(t) { if (!have('ppsh-burst')) return false; samp('ppsh-burst', t, {gain:.85}); rifles(t + .2, 2, .6, .9); },
+  m2hb(t) { if (!have('cal50')) return false; samp('cal50', t, {gain:.9}); },
+  quad50(t) { if (!have('cal50-avenger')) return false; samp('cal50-avenger', t, {gain:.9, len:2.2}); },
+  ptrd(t) { if (!have('enfield-shot')) return false; for (const x of AU.quiet ? [t] : [t, t + 1.4]) { samp('enfield-shot', x, {gain:1.1, rate:.62}); if (!AU.quiet) samp('bullet-impact', x + .12, {gain:.4, rate:.8}); } },
+  flak20(t) { if (!have('flak-shot')) return false; for (let i = 0; i < 12; i++) samp('flak-shot', t + i * .135, {gain:.8, rate:.9 + Math.random() * .2, fade:.04}); },
+  bofors(t) { if (!have('artillery-shot')) return false; for (let i = 0; i < 6; i++) samp('artillery-shot', t + i * .5, {gain:.8, rate:1.25 + Math.random() * .1}); },
+  gun37(t) { if (!have('artillery-shot')) return false; gunRec(t, 'small', 1.3); if (!AU.quiet) gunRec(t + .9, 'small', 1.3); blast(t + .3, .5); blast(t + 1.2, .5); },
+  gun50(t) { if (!have('artillery-shot')) return false; gunRec(t, 'small', 1.12); blast(t + .28, .6); },
+  gun75(t) { if (!have('tank-fire')) return false; gunRec(t, 'mid', 1.05); blast(t + .3, .8); },
+  gun75hv(t) { if (!have('tank-fire')) return false; gunRec(t, 'mid', 1.12); blast(t + .2, .85); },
+  gun76(t) { if (!have('tank-fire')) return false; gunRec(t, 'mid', 1.02); blast(t + .28, .8); },
+  gun85(t) { if (!have('cannon-shot')) return false; gunRec(t, 'big', 1.05); blast(t + .24, 1); },
+  gun88(t) { if (!have('cannon-shot')) return false; gunRec(t, 'big', 1.08); blast(t + .18, 1.1); },
+  gun90(t) { if (!have('cannon-shot')) return false; gunRec(t, 'big', 1.02); blast(t + .2, 1.05); },
+  gun17pdr(t) { if (!have('cannon-shot')) return false; gunRec(t, 'big', 1.12); blast(t + .16, 1.05); },
+  gun122(t) { if (!have('cannon-shot')) return false; gunRec(t, 'big', .86); blast(t + .26, 1.3); },
+  howitzer(t) { if (!have('field-gun', 'incoming-1')) return false;
+    if (have('sexton-fire') && Math.random() < .5) samp('sexton-fire', t, {off:.2, len:3, gain:.65, norm:false, fade:.6}); else { samp('field-gun', t, {gain:.9, rate:.85}); gunRec(t + .02, 'big', .78); }
+    if (!AU.quiet) samp(pickOf(['incoming-1', 'incoming-4']), t + .9, {gain:.5, rate:.95}); blast(t + 2.4, 1.3); },
+  mortar(t) { if (!have('incoming-4')) return false; thump(t, {f0:180, f1:90, dur:.15, gain:.7}); noiseHit(t, {dur:.08, bp:700, gain:.5}); if (!AU.quiet) samp(pickOf(['incoming-1', 'incoming-4']), t + .5, {gain:.4, rate:1.15}); blast(t + 1.9, .9); },
+  naval(t) { if (!have('cannon-shot')) return false; gunRec(t, 'big', .7); if (!AU.quiet) { gunRec(t + .35, 'big', .72); samp('incoming-4', t + 1, {gain:.5, rate:.8}); } blast(t + 2.2, 1.4); blast(t + 2.5, 1.2); },
+  barrage(t) { if (!have('incoming-artillery')) return false; samp('incoming-artillery', t, {gain:.9, len:4.6}); for (let i = 0; i < 6; i++) blast(t + 1 + i * .32 + Math.random() * .15, 1.2); },
+  bombs(t) { if (!have('explosion-1')) return false; engine(t, 1.8, {f:70, gain:.13, lp:700, ramp:1.3}); whistle(t + .6, 1, 1700, 500); blast(t + 1.6, 1.4); blast(t + 1.85, 1.2); },
+  carpet(t) { if (!have('explosion-1')) return false; engine(t, 3.5, {f:55, gain:.2, lp:500, ramp:1.05}); engine(t, 3.5, {f:62, gain:.12, lp:500, ramp:1.04}); for (let i = 0; i < 12; i++) blast(t + .9 + i * .14 + Math.random() * .08, 1.2); },
+  flamer(t) { if (!have('flamethrower')) return false; samp('flamethrower', t, {take:1, len:1.4, gain:.9}); },
+  bangalore(t) { if (!have('explosion-debris')) return false; rifles(t, 3, 1); blast(t + 1.4, 1.3); },
+  rocketAT(t) { if (!have('explosion-2')) return false; noiseHit(t, {dur:.15, lp:1200, gain:.6}); whoosh(t, .45, 400, 1800, .5); blast(t + .45, .8); },
+  strafeGer(t) { if (!have('mg-fast')) return false; engine(t, 1.6, {f:95, gain:.12, lp:900, ramp:1.25}); samp('mg-fast', t + .4, {gain:.8, rate:1.1, len:1.2}); },
+  strafeUS(t) { if (!have('cal50')) return false; WEAPON.strafeUS(t); samp('cal50', t + .4, {gain:.8, len:1.3}); },
+  strafeUK(t) { if (!have('hmg-burst')) return false; WEAPON.strafeUK(t); samp('hmg-burst', t + .45, {gain:.6, rate:1.15, len:1}); },
+  strafeSU(t) { if (!have('hmg-burst')) return false; WEAPON.strafeSU(t); samp('hmg-burst', t + .45, {gain:.6, rate:.95, len:1}); },
+};
+for (const k of ['nebel', 'katyusha', 'calliope', 'mattress', 'rp3', 'stuka']) {           // rockets and dive-bombers keep their modelled launch; the detonations are recorded
+  const n = {nebel:6, katyusha:8, calliope:7, mattress:7, rp3:4, stuka:1}[k], at = {nebel:2.2, katyusha:1.7, calliope:1.5, mattress:1.6, rp3:1, stuka:2.3}[k];
+  SW[k] = t => { if (!have('explosion-2')) return false; launchOnly(k, t); for (let i = 0; i < n; i++) blast(t + at + i * .18 + Math.random() * .1, k === 'stuka' ? 1.5 : 1); };
+}
+function launchOnly(k, t) {                           // the modelled launch with its synthetic detonations muted
+  const real = explosion; explosion = () => {}; try { WEAPON[k](t); } finally { explosion = real; }
+}
+/* what the target sounds like when it is hit: rounds whining off armour, the clang of a shot that fails to penetrate */
+function impactSound(ad, dd, delay = 0) {
+  if (!SET.sound || !AU.ctx || !dd || !have('ricochet-1')) return;
+  const cls = fxClass(ad), armour = dd.mt === 'tread' || dd.sea, t = AU.ctx.currentTime + .02 + delay;
+  if (!armour) return;
+  if (['smallarms', 'flak', 'strafe', 'atrifle'].includes(cls)) { const n = 2 + (Math.random() * 3 | 0); for (let i = 0; i < n; i++) samp(pickOf(['ricochet-1', 'ricochet-2', 'ricochet-metal', 'ricochet-3']), t + i * (.12 + Math.random() * .25), {gain:.42, rate:.9 + Math.random() * .25, len:1.2}); }
+  else if (cls === 'cannon' || cls === 'rocketAT') samp(pickOf(['ricochet-metal', 'bullet-impact']), t, {gain:.55, rate:.62 + Math.random() * .1, len:1.2});
+}
+/* ---------- babble: every character who speaks mumbles in his own voice ----------
+   Not words, but the shape of speech: the vowels of the line pick the formants, consonants add clicks and hiss,
+   the pitch falls through a sentence and lifts at a question. Each voice is drawn from the speaker's name, so
+   Rommel always sounds like Rommel. */
+const VOWEL_F = {a:[730, 1090], e:[530, 1840], i:[300, 2200], o:[570, 840], u:[440, 1020], y:[300, 2000]};
+const VOWEL_MAP = {'а':'a', 'я':'a', 'е':'e', 'э':'e', 'ё':'o', 'и':'i', 'ы':'y', 'о':'o', 'у':'u', 'ю':'u', 'ä':'e', 'ö':'o', 'ü':'u', 'é':'e', 'è':'e', 'ê':'e', 'à':'a', 'â':'a', 'ô':'o', 'û':'u', 'î':'i'};
+function voiceOf(id, zed) {
+  if (zed) return {f0:58, rate:4.5, form:.78, gruff:1, breath:.9};
+  let h = 2166136261; for (const ch of String(id)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  const r = n => ((h >>> n) & 255) / 255;
+  return {f0:84 + r(0) * 60, rate:8 + r(8) * 5, form:.9 + r(16) * .2, gruff:r(24) * .9, breath:.12 + r(4) * .3};
+}
+function babble(id, text, o = {}) {
+  if (!SET.sound) return null; auInit(); if (!AU.ctx) return null;
+  const v = voiceOf(id, o.zed), c = AU.ctx, t0 = c.currentTime + .04, maxDur = o.max || 3.4;
+  // syllables: a consonant run and a vowel group; spaces and punctuation become pauses
+  const units = []; let cons = '';
+  for (const raw of text.toLowerCase()) {
+    const ch = VOWEL_MAP[raw] || raw;
+    if (VOWEL_F[ch]) { const last = units[units.length - 1]; if (last && last.v && !cons) continue; units.push({v:ch, c:cons}); cons = ''; }
+    else if (/[a-zа-яß]/i.test(ch)) cons += ch;
+    else if (/[.!?…]/.test(ch)) units.push({pause:.24, end:ch}); else if (/[,;:—–-]/.test(ch)) units.push({pause:.14}); else if (ch === ' ') units.push({pause:.035});
+  }
+  const ask = /\?\s*$/.test(text), shout = /!/.test(text), step = 1 / v.rate;
+  const bus = c.createGain(); bus.gain.value = (o.gain || .7) * (shout ? 1.25 : 1); bus.connect(out(1, .12));
+  const osc = c.createOscillator(); osc.type = 'sawtooth';
+  const env = c.createGain(); env.gain.value = 0;
+  const f1 = c.createBiquadFilter(), f2 = c.createBiquadFilter(), lp = c.createBiquadFilter(); f1.type = f2.type = 'bandpass'; f1.Q.value = 6; f2.Q.value = 9; lp.type = 'lowpass'; lp.frequency.value = 3200;
+  const f2g = c.createGain(); f2g.gain.value = .55;
+  osc.connect(env); env.connect(f1); env.connect(f2); f2.connect(f2g); f1.connect(lp); f2g.connect(lp); lp.connect(bus);
+  let sub; if (v.gruff > .45) { sub = c.createOscillator(); sub.type = 'square'; const sg = c.createGain(); sg.gain.value = .06 * v.gruff; sub.connect(sg); sg.connect(env); }   // a rasp under the voice
+  const syls = units.filter(u => u.v).length || 1;
+  let t = t0, n = 0, base = v.f0 * (shout ? 1.14 : 1) * (o.pitch || 1);
+  for (const u of units) {
+    if (t - t0 > maxDur) break;
+    if (u.pause) { t += u.pause * (o.quick ? .5 : 1); continue; }
+    const k = n++ / syls, dur = step * (.7 + Math.random() * .5) * (u.c.length > 2 ? 1.2 : 1);
+    let f = base * (1 - .16 * k) * (1 + (Math.random() - .5) * .14); if (ask && k > .75) f *= 1 + (k - .75) * 1.6;
+    const [a, b] = VOWEL_F[u.v], nasal = /[mn]$/.test(u.c);
+    osc.frequency.setTargetAtTime(f, t, .02); if (sub) sub.frequency.setTargetAtTime(f / 2, t, .02);
+    f1.frequency.setTargetAtTime(a * v.form * (nasal ? .7 : 1), t, .025); f2.frequency.setTargetAtTime(b * v.form, t, .025);
+    if (/[ptkbdgcq]/.test(u.c)) noiseHit(t, {dur:.014, bp:2600 + Math.random() * 1400, q:2, gain:.012, dest:bus});   // plosive
+    if (/(s|z|f|sh|ch|x|ß|v|th)/.test(u.c)) noiseHit(t, {dur:.045, hp:4200, gain:.008, dest:bus});                   // fricative
+    const on = t + (u.c ? .02 : 0);
+    env.gain.setValueAtTime(0, on); env.gain.linearRampToValueAtTime(1, on + .018); env.gain.setValueAtTime(1, on + dur * .65); env.gain.linearRampToValueAtTime(0, on + dur);
+    if (v.breath > .2) noiseHit(on, {dur:dur * .8, bp:a * 1.5, q:1.5, gain:.008 * v.breath, attack:.02, dest:bus});
+    t = on + dur + .01;
+  }
+  osc.start(t0); osc.stop(t + .1); if (sub) { sub.start(t0); sub.stop(t + .1); }
+  const dur = t - t0;
+  return {dur, stop() { try { bus.gain.setTargetAtTime(0, c.currentTime, .03); osc.stop(c.currentTime + .1); if (sub) sub.stop(c.currentTime + .1); } catch (e) {} }};
+}
+/* right now, from an animation callback: a ricochet, the clang of a shot on armour, a turret landing */
+function sfxNow(kind) {
+  if (!SET.sound || !AU.ctx) return; const t = AU.ctx.currentTime + .01;
+  if (kind === 'rico') samp(pickOf(['ricochet-1', 'ricochet-2', 'ricochet-metal', 'ricochet-3']), t, {gain:.34, rate:.85 + Math.random() * .35, len:1.1});
+  else if (kind === 'clang') samp(pickOf(['ricochet-metal', 'bullet-impact']), t, {gain:.5, rate:.6 + Math.random() * .12, len:1.2});
+  else if (kind === 'thud') { thump(t, {f0:70, f1:30, dur:.5, gain:.9}); noiseHit(t, {dur:.3, lp:600, gain:.6}); noiseHit(t, {dur:.15, bp:1800, q:3, gain:.2}); }
+}
+/* how a vehicle dies, chosen per vehicle so that a troop of three never goes up the same way */
+function deathKind(d) {
+  if (!d || d.foot || d.air || d.sea) return null;
+  const r = Math.random();
+  return d.mt === 'tread' && !d.fixed ? (r < .4 ? 'knockout' : r < .72 ? 'brewup' : 'cookoff') : (r < .55 ? 'knockout' : 'brewup');
+}
+function killSound(d, delay = 0, kind) { if (!d || d.foot) return; sfx(kind || deathKind(d) || 'boom', delay); }
+/* a voice from the library: wounded men, the dying. Falls back to the modelled voice. */
+function cryOut(t, kind) {
+  const pool = kind === 'die' ? ['death-1', 'death-2', 'death-3', 'death-4', 'death-5', 'screams', 'screams', 'pain-mix'] : ['pain-grunts', 'pain-mix', 'pain-grunt', 'death-4'];
+  const n = pickOf(pool); if (!n) return false;
+  samp(n, t, {gain:kind === 'die' ? .85 : .72, rate:.9 + Math.random() * .2, len:kind === 'die' ? 2.4 : 1.4, wet:.3}); return true;
+}
 /* ---------- human voices: a cry of pain, a shout ---------- */
 /* a crude vocal tract: a glottal sawtooth through two vowel formants, with a breathy noise layer */
 function voice(t, {f0 = 300, f1 = 200, dur = .7, vowel = [800, 1200], gain = .22, vib = 9, breath = .3}) {
@@ -3096,8 +3278,8 @@ function voice(t, {f0 = 300, f1 = 200, dur = .7, vowel = [800, 1200], gain = .22
   noiseHit(t, {dur, bp:vowel[0] * 1.4, q:2, gain:gain * breath, attack:.05, dest});
 }
 const UI_SND = {
-  scream(t) { const v = Math.random(); voice(t, v < .5 ? {f0:380 + Math.random() * 120, f1:180, dur:.9 + Math.random() * .5, vowel:[850, 1250]} : {f0:300, f1:150, dur:.6, vowel:[650, 1100], vib:14}); },
-  cry(t) { voice(t, {f0:260 + Math.random() * 60, f1:140, dur:.45, vowel:[550, 950], gain:.16, vib:5}); voice(t + .5, {f0:240, f1:130, dur:.5, vowel:[500, 900], gain:.12, vib:4}); },
+  scream(t) { if (cryOut(t, 'die')) return; const v = Math.random(); voice(t,v < .5 ? {f0:380 + Math.random() * 120, f1:180, dur:.9 + Math.random() * .5, vowel:[850, 1250]} : {f0:300, f1:150, dur:.6, vowel:[650, 1100], vib:14}); },
+  cry(t) { if (cryOut(t, 'hurt')) return; voice(t,{f0:260 + Math.random() * 60, f1:140, dur:.45, vowel:[550, 950], gain:.16, vib:5}); voice(t + .5, {f0:240, f1:130, dur:.5, vowel:[500, 900], gain:.12, vib:4}); },
   shout(t) { for (let i = 0; i < 2; i++) voice(t + i * .22, {f0:210 + Math.random() * 50, f1:190, dur:.18, vowel:i ? [700, 1150] : [500, 1500], gain:.14, vib:2, breath:.5}); },
   click(t) { noiseHit(t, {dur:.025, hp:3000, gain:.25}); thump(t, {f0:900, f1:500, dur:.03, gain:.12}); },
   select(t) { noiseHit(t, {dur:.03, hp:2500, gain:.3}); noiseHit(t + .06, {dur:.03, hp:2000, gain:.25}); },   // bolt working
@@ -3106,13 +3288,23 @@ const UI_SND = {
   build(t) { for (let i = 0; i < 4; i++) noiseHit(t + i * .09, {dur:.04, bp:2500, q:4, gain:.25}); thump(t, {f0:120, f1:60, dur:.3, gain:.4}); },
   power(t) { explosion(t, .6); for (let i = 0; i < 5; i++) noiseHit(t + .2 + i * .1, {dur:.05, hp:1500, gain:.3}); },
   turn(t) { noiseHit(t, {dur:.4, bp:300, q:1, gain:.2, attack:.1}); },
-  move_tread(t) { engine(t, .9, {f:34, gain:.2, lp:260, clank:1}); },
-  move_tire(t) { engine(t, .9, {f:48, gain:.13, lp:500}); },
-  move_foot(t) { for (let i = 0; i < 6; i++) noiseHit(t + i * .14, {dur:.05, bp:500, q:1, gain:.25}); },
+  move_tread(t) { if (have('tank-move')) { samp(pickOf(['tank-move', 'tracks', 'tank-engine']), t, {off:'rand', len:2.4, gain:.5, fade:.5, fadeIn:.25}); return; } engine(t, .9, {f:34, gain:.2, lp:260, clank:1}); },
+  move_tire(t) { if (have('truck-hum')) { const j = Math.random() < .5 && have('jeep'); samp(j ? 'jeep' : 'truck-hum', t, {off:j ? Math.random() * 26 : 'rand', len:2, gain:.4, fade:.5, fadeIn:.25}); return; } engine(t, .9, {f:48, gain:.13, lp:500}); },
+  move_foot(t) {                                    // a squad on the move: boots on gravel, out of step, and the rattle of kit
+    if (have('boots-gravel')) { for (let m = 0; m < 3; m++) for (let i = 0; i < 4; i++) samp('boots-gravel', t + m * .17 + i * (.32 + Math.random() * .05), {gain:.38, rate:.85 + Math.random() * .3, len:.35, fade:.05});
+      for (let i = 0; i < 5; i++) noiseHit(t + Math.random() * 1.3, {dur:.04, bp:3200, q:4, gain:.05}); return; }
+    for (let i = 0; i < 6; i++) noiseHit(t + i * .14, {dur:.05, bp:500, q:1, gain:.25}); },
   move_air(t) { engine(t, 1, {f:92, gain:.1, lp:1000, ramp:1.15}); },
-  move_ship(t) { engine(t, 1, {f:30, gain:.12, lp:200}); noiseHit(t, {dur:1, bp:700, q:.5, gain:.12, attack:.3}); },
-  hit(t) { explosion(t, .5); },
-  boom(t) { explosion(t, 1.2); },
+  move_ship(t) { engine(t, 1, {f:30, gain:.12, lp:200}); noiseHit(t, {dur:1, bp:700, q:.5, gain:.12, attack:.3}); if (have('ship-horn') && Math.random() < .3) samp('ship-horn', t + .3, {off:10.1, len:3, gain:.3, lp:1400, fade:1}); },
+  hit(t) { if (have('explosion-2')) return blast(t, .6); explosion(t, .5); },
+  boom(t) { if (have('explosion-1')) return blast(t, 1.3); explosion(t, 1.2); },
+  /* three ways a tank dies: knocked out (the shot goes in, the crew bale out), brewed up (fire takes hold), cooked off (the ammunition goes up and the turret with it) */
+  knockout(t) { samp(pickOf(['ricochet-metal', 'bullet-impact']), t, {gain:.6, rate:.6}); if (have('explosion-2')) blast(t + .08, .7); else explosion(t, .6); },
+  brewup(t) { if (have('explosion-debris')) { blast(t, 1.1); samp('flamethrower', t + .5, {take:0, len:2.2, gain:.45, rate:.7, fade:1}); } else explosion(t, 1.1);
+    for (let i = 0; i < 8; i++) noiseHit(t + .6 + Math.random() * 2, {dur:.02, hp:1800, gain:.12}); },
+  cookoff(t) { if (have('explosion-1')) { blast(t, 1.3); samp('explosion-debris', t + .25, {gain:.55, rate:.8}); } else explosion(t, 1.6);
+    for (let i = 0; i < 14; i++) { const x = t + .5 + Math.random() * 2.4; report(x, .6 + Math.random() * .6, .7 + Math.random() * .6); if (Math.random() < .3) thump(x, {f0:140, f1:50, dur:.2, gain:.5}); } },   // rounds cooking off inside the hull
+  bodyfall(t) { thump(t, {f0:110, f1:60, dur:.12, gain:.35}); noiseHit(t, {dur:.12, lp:900, gain:.3}); noiseHit(t + .05, {dur:.05, bp:2600, q:3, gain:.08}); },
   victory(t) {}, defeat(t) {},
 };
 function sfx(name, delay = 0) {
@@ -3124,7 +3316,31 @@ function sfx(name, delay = 0) {
     s.connect(g); g.connect(out(1, .15)); s.start(t, use[1], use[2]);
     if (!SAMPLE_LAYER.has(name)) return;
   }
+  if (WEAPON[name] && typeof AMB !== 'undefined') AMB.heat = Math.min(1, AMB.heat + .12);    // the soundscape follows the fighting
+  try { if (SW[name] && SW[name](t) !== false) return; } catch (e) {}
   const f = WEAPON[name] || UI_SND[name]; if (f) try { f(t); } catch (e) {}
+}
+/* ---------- sound that follows the picture ----------
+   The animations call these at the moment things happen on screen: shot() at each muzzle flash (only the firing:
+   detonations and incoming whistles are muted), incomingTo() for the whistle of a falling shell timed to its
+   landing, boomAt() when the shell lands, launch() for each rocket leaving its rail. */
+function shot(name, o = {}) {
+  if (!SET.sound) return; auInit(); if (!AU.ctx) return;
+  AU.quiet = true; AU.scale = o.gain || 1;
+  try { sfx(name, o.delay || 0); } finally { AU.quiet = false; AU.scale = 1; }
+}
+function boomAt(size = 1, o = {}) {
+  if (!SET.sound || !AU.ctx) return; const t = AU.ctx.currentTime + .005;
+  AU.scale = o.gain || 1;
+  try { if (o.water) { noiseHit(t, {dur:.9, bp:900, q:.6, gain:.6}); thump(t, {f0:70, f1:30, dur:.5, gain:.6}); } else if (have('explosion-2')) blast(t, size); else explosion(t, size); } finally { AU.scale = 1; }
+}
+function incomingTo(secs, o = {}) {                     // the shell's whistle, falling in pitch, ending as it lands
+  if (!SET.sound || !AU.ctx || secs < .25) return; const t = AU.ctx.currentTime + .01;
+  tone(t, {f:o.f0 || 1900, f1:o.f1 || 620, dur:secs, gain:(o.gain || 1) * .08, type:'sine', attack:Math.min(.3, secs * .4)});
+}
+function launch(o = {}) {                               // one rocket leaving its rail
+  if (!SET.sound || !AU.ctx) return; const t = AU.ctx.currentTime + .005; AU.scale = o.gain || 1;
+  try { noiseHit(t, {dur:.12, lp:1400, gain:.5}); whoosh(t, .55, 300, 2400, .32); } finally { AU.scale = 1; }
 }
 function moveSound(u) { if (NATION[u.d.nat] && NATION[u.d.nat].zed) return sfx(u.role === 'cav' ? 'claw' : 'shamble'); const mt = u.d.mt; sfx(mt === 'tread' ? 'move_tread' : mt === 'tire' ? 'move_tire' : mt === 'air' ? 'move_air' : (mt === 'ship' || mt === 'lander') ? 'move_ship' : 'move_foot'); }
 
@@ -3253,7 +3469,12 @@ function playTrack(t, at = 0) {
 function musicToggle() { const el = MUSIC.els[MUSIC.cur]; if (!SET.music) MUSIC.els.forEach(e => e && e.pause()); else if (MUSIC.playing && el && el.src) { el.volume = musicVol(); el.play().catch(() => {}); } else if (MUSIC.mood) musicMood(MUSIC.mood, true); }
 
 /* ---------- soundscape ---------- */
-const AMB = {on:false, nodes:{}, next:{}, timer:null};
+const AMB = {on:false, nodes:{}, next:{}, timer:null, loops:{}, heat:0};
+function ambLoop(name, level, now) {                    // a recorded bed, looping, faded to the level the scene calls for
+  let L = AMB.loops[name];
+  if (!L) { if (!level || !AU.samples[name]) return; const c = AU.ctx, s = c.createBufferSource(), g = c.createGain(); s.buffer = AU.samples[name]; s.loop = true; g.gain.value = 0; s.connect(g); g.connect(AMB.bed); s.start(now, Math.random() * s.buffer.duration); L = AMB.loops[name] = {s, g, pk:(AU.takes[name] || [{pk:1}])[0].pk}; }
+  L.g.gain.setTargetAtTime(level * Math.min(3, .5 / L.pk), now, 2);
+}
 function ambStart() {
   if (AMB.on || !AU.ctx) return; AMB.on = true;
   const c = AU.ctx, bed = c.createGain(); bed.gain.value = 0; bed.connect(AU.master); AMB.bed = bed;
@@ -3294,7 +3515,22 @@ function ambTick() {
   if (s.night && !s.snow && due('cricket')) { AMB.next.cricket = now + .35 + Math.random() * .3; for (let i = 0; i < 3; i++) tone(now + i * .045, {f:4300 + Math.random() * 200, dur:.03, gain:.012, type:'sine', dest:AMB.bed}); }
   // fire crackle in ruins or around fresh wrecks
   if ((s.n.urban > .3 || s.wrecks) && due('fire')) { AMB.next.fire = now + .08 + Math.random() * .25; noiseHit(now, {dur:.015 + Math.random() * .02, hp:1800, gain:.05 + Math.random() * .05, dest:AMB.bed}); }
-  // the distant war: guns rumbling beyond the horizon, now and then a far-off MG burst
+  // recorded beds: the low roar of a battlefield, desert wind on the arid maps
+  const arid = ['desert', 'tunisia'].includes(G.theme);
+  ambLoop('amb-battlefield', s.battle ? .1 + .25 * AMB.heat : 0, now);
+  ambLoop('amb-desert-wind', arid && !s.rain ? .5 : 0, now);
+  AMB.heat = Math.max(0, AMB.heat - .004);
+  // the distant war, recorded: rifle and MG fire across the valley, a barrage on the next ridge, bombers working over a town; busier as the fighting heats up
+  if (s.battle && due('far') && have('amb-ww2-gunfire')) { AMB.next.far = now + (2.5 + Math.random() * 8) * (1 - .55 * AMB.heat) * (s.night ? 1.6 : 1);
+    const r = Math.random(), far = 600 + Math.random() * 900, o = {dest:AMB.bed, lp:far, wet:0, rate:.85 + Math.random() * .2};
+    if (r < .3) samp('amb-ww2-gunfire', now, {...o, gain:.55, len:5, lp:far * 2});
+    else if (r < .5) samp('amb-gunfire', now, {...o, gain:.35, len:3});
+    else if (r < .7) samp(pickOf(['amb-distant-explosions', 'explosion-distant', 'explosion-muffled']), now, {...o, gain:.6, len:5, lp:400 + Math.random() * 300});
+    else if (r < .82) samp('amb-war-loop', now, {...o, gain:.4, len:4});
+    else if (r < .92) samp('amb-bombing', now, {...o, gain:.55, off:'rand', len:7, fade:2, fadeIn:1.5, lp:300});
+    else samp(pickOf(['screams', 'pain-grunts']), now, {...o, gain:.18, lp:900, len:2});   // somewhere out there, a man calling for help
+    return; }
+  // the distant war, modelled (when the recordings are not available): guns rumbling beyond the horizon, now and then a far-off MG burst
   if (s.battle && due('far')) { AMB.next.far = now + 3 + Math.random() * 9;
     const kind = Math.random();
     if (kind < .65) { for (let i = 0; i < 1 + (Math.random() * 3 | 0); i++) { const t = now + i * (.3 + Math.random() * .8); noiseHit(t, {dur:1.8, lp:140, gain:.18, attack:.05, dest:AMB.bed}); thump(t, {f0:60, f1:25, dur:1.2, gain:.12, dest:AMB.bed}); } }
@@ -3318,6 +3554,66 @@ function renderJukebox() {
     el.append(row);
   }
 }
+
+/* generated by tools/credits.js from tools/sfx-sources.json: the sound library and its licences */
+const SFX_LIB_CREDITS = [["M1 Garand Rifle","nioczkus, Freesound #386842","CC0"],
+  ["Rifle Shot (M1 Garand)","Rijam, Freesound #385785","CC0"],
+  ["An M1 Garand clip being ejected w/ ping","serøutōnin--deprivəd, Freesound #725398","CC0"],
+  ["gun lee enfield 303 rifle fire shot loud badass crispy","kyles, Freesound #450852","CC0"],
+  ["Mosin Nagant Bolt","rammbostein, Freesound #263459","CC0"],
+  ["Thompson SMG Shot","wadaltmon, Freesound #258198","CC0"],
+  ["PPSh Shooting","coolabc, Freesound #579531","CC0"],
+  ["PPSh-41 - Soviet Submachine Gun","Lubini, Freesound #338323","CC BY 4.0"],
+  ["Heavy Machine Gun","ShawnyBoy, Freesound #165394","CC0"],
+  ["Machine Gun Shots Fast","ShawnyBoy, Freesound #165393","CC0"],
+  ["heavy.burst","alienbomb, Freesound #39071","CC0"],
+  ["50 Cal MG","qubodup, Freesound #239138","CC0"],
+  ["Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8)","qubodup, Freesound #160355","CC0"],
+  ["t26_moving_01","greatmganga, Freesound #329800","CC0"],
+  ["tracked vehicle","cognito perceptu, Freesound #121531","CC0"],
+  ["Driving Tank Engine","qubodup, Freesound #187676","CC0"],
+  ["Tank fire Mixed","GaryQ, Freesound #127845","CC0"],
+  ["Tank Shots","qubodup, Freesound #239135","CC0"],
+  ["Cannon Shot","qubodup, Freesound #187767","CC0"],
+  ["cannon","Kneeling, Freesound #448002","CC0"],
+  ["Heavy Artillery Shot","LilMati, Freesound #441373","CC0"],
+  ["GUNArtl_69thFieldArtilleryGun01_InMotionAudio_FREESampleSunday","InMotionAudio, Freesound #702245","CC0"],
+  ["Incoming mortar 1","Zagge28, Freesound #241840","CC0"],
+  ["Incoming mortar 4","Zagge28, Freesound #241837","CC0"],
+  ["Incoming Artillery","bendodge, Freesound #170991","CC BY 3.0"],
+  ["Explosion_01","tommccann, Freesound #235968","CC0"],
+  ["Explosion","qubodup, Freesound #182429","CC0"],
+  ["Muffled Distant Explosion","NenadSimic, Freesound #149966","CC0"],
+  ["Explosion Distant ","Johnnyfarmer, Freesound #209769","CC0"],
+  ["Nearby explosion with debris","juskiddink, Freesound #108641","CC BY 4.0"],
+  ["bullet ricochet","aust_paul, Freesound #30932","CC0"],
+  ["ricochet","cedarstudios, Freesound #148840","CC0"],
+  ["pistol_riccochet","Diboz, Freesound #213925","CC0"],
+  ["Metal Bullet Ricochets","mikiko850, Freesound #854335","CC BY 4.0"],
+  ["Guns & Explosions Album - Bullet Impact 14","OGsoundFX, Freesound #423107","CC BY 4.0"],
+  ["Death sound (male)","Replix, Freesound #173126","CC0"],
+  ["Man Dying","Under7dude, Freesound #163442","CC0"],
+  ["Grunt2 - Death Pain","tonsil5, Freesound #416838","CC0"],
+  ["Grunt1 - Death Pain","tonsil5, Freesound #416839","CC0"],
+  ["Male_Death_04","Artmasterrich, Freesound #345456","CC0"],
+  ["Male Screams [1]","marc3122, Freesound #556976","CC0"],
+  ["Medium Male Pain Grunts","unfa, Freesound #610998","CC0"],
+  ["male pain sound effects","rockittt, Freesound #442288","CC0"],
+  ["Voice_AdultMale_PainGrunts_09","MrFossy, Freesound #547209","CC0"],
+  ["Footsteps_Boots_Gritty_Ground_(Gravel)","Nox_Sound, Freesound #530589","CC0"],
+  ["Running_Boots_medium_speed","jcdecha, Freesound #235470","CC0"],
+  ["Military Vehicle Humming","qubodup, Freesound #182793","CC0"],
+  ["Jeep-CJ5-1965-final","deleted_user_1995570, Freesound #234902","CC0"],
+  ["Flamethrower","pugaeme, Freesound #396890","CC BY 3.0"],
+  ["War Ambience Loop","qubodup, Freesound #239139","CC0"],
+  ["BattleField Ambience (Loop)","banan_, Freesound #385895","CC0"],
+  ["distant explosions","Kostrava, Freesound #320788","CC0"],
+  ["Gunfire","qubodup, Freesound #205588","CC0"],
+  ["Distant WW2 Gunfire Kent","Cheeseheadburger, Freesound #170478","CC BY 4.0"],
+  ["Distant Bombing","Filo_Rossi, Freesound #342136","CC BY 4.0"],
+  ["Desert Simple","Proxima4, Freesound #104320","CC0"],
+  ["ship horn","monotraum, Freesound #208714","CC0"],
+  ["Flak_Shot","kantouth, Freesound #104399","CC BY 4.0"]];
 
 /* ============================== EFFECTS ===================================
    A particle system in world space (explosions, fire, smoke, debris, dust,
@@ -3367,12 +3663,17 @@ const BARKS = {
   su: {sel:['Есть!', 'Вперёд!', 'Так точно!'], veh:['Вперёд!', 'Полный ход!', 'Есть!'], atk:['Огонь!', 'За Родину!', 'Ура!'], kill:['Готов!', 'Горит!', 'Попал!'], hurt:['Санитар!', 'Ложись!', 'Горим!']},
   fr: {sel:['Oui, mon général!', 'En avant!', 'À vos ordres!'], veh:['En avant!', 'Roulez!'], atk:['Feu!', 'Tirez!', 'Pour la France!'], kill:['Touché!', 'Détruit!', 'Bien joué!'], hurt:['Infirmier!', 'À couvert!', 'Repli!']},
 };
-function fxBark(u, kind) {
+function barkText(nat, kind, foot) {
+  const B = BARKS[nat] || BARKS[natBase(nat)] || BARKS.us, list = (kind === 'sel' || kind === 'move' || kind === 'atk' && !B.atk) && !foot && B.veh ? B.veh : B[kind] || B.sel;
+  return list ? list[Math.floor(Math.random() * list.length)] : null;
+}
+function fxBark(u, kind, o = {}) {
   if (FAST || !SET.fx || !u || !G.teams[u.team]) return;
-  const nat = G.teams[u.team].nat, B = BARKS[nat] || BARKS[natBase(nat)] || BARKS.us, list = kind === 'sel' && !u.d.foot && B.veh ? B.veh : B[kind]; if (!list) return;
+  const nat = G.teams[u.team].nat, B = BARKS[nat] || BARKS[natBase(nat)] || BARKS.us, list = (kind === 'sel' || kind === 'move') && !u.d.foot && B.veh ? B.veh : B[kind] || B.sel; if (!list) return;
   if (!seen(u)) return;
   FX.parts = FX.parts.filter(p => !(p.kind === 'bark' && p.uid === u.id));
-  const [x, y] = T2W(u.x, u.y); part({kind:'bark', uid:u.id, x, y:y - 40, vx:0, vy:-4, text:list[Math.floor(Math.random() * list.length)], life:1500, flip:u.team === 2});
+  const [x, y] = T2W(u.x, u.y), text = list[Math.floor(Math.random() * list.length)]; part({kind:'bark', uid:u.id, x, y:y - 40, vx:0, vy:-4, text, life:1500, flip:u.team === 2});
+  if (Math.random() < .75) babble(nat + (u.id % 6), text, {gain:o.quiet ? .25 : .5, max:1.3, quick:true, zed:nat === 'zed', pitch:u.d.foot ? 1.05 : .95});   // the man himself, mumbling it
 }
 function fxMuzzle(wx, wy, dir = 1, size = 1) {
   part({kind:'flash', x:wx, y:wy, size:9 * size, life:110, dir}); lightAt(wx, wy, 60 * size, '255,220,150', 160);
@@ -3427,29 +3728,46 @@ function fxClass(d) {
   if (d.role === 'dd') return 'naval';
   return 'cannon';
 }
-async function fxAttackMap(u, t, killed) {
+/* the attack on the map, with its sound tied to the picture: the report with the muzzle flash, the whistle in flight, the bang on impact.
+   o.quiet: the battle scene has already played the sound of this attack */
+async function fxAttackMap(u, t, killed, o = {}) {
   if (FAST || !SET.fx) return;
   const k = fxClass(u.d), [ax, ay] = T2W(u.x, u.y), dir = t.x >= u.x ? 1 : -1, big = u.role === 'htank' || u.role === 'pak' ? 1.4 : u.role === 'tank' || u.role === 'mtank' ? 1.1 : .8;
+  const S = !o.quiet, snd = u.d.snd, armour = t.d.mt === 'tread' || t.d.sea;
+  const fire = () => { if (S) shot(snd); }, bang = (s, n = 0) => { if (S && n < 4) boomAt(s, {gain:n ? .6 : 1}); }, whistleFor = (ms, at = 100) => { if (S) setTimeout(() => incomingTo((ms - at) / 1000), at); }, clang = () => { if (S && armour) sfxNow('clang'); };
   switch (k) {
-    case 'smallarms': fxMuzzle(ax + dir * 14, ay - 8, dir, .5); fxTracers(u, t, u.role === 'nest' || u.d.snd === 'mg42' ? 12 : 7); await sleep(500); break;
-    case 'flamer': for (let i = 0; i < 16; i++) setTimeout(() => { const [bx, by] = T2W(t.x, t.y); part({kind:'fire', x:ax + dir * 10, y:ay - 6, vx:(bx - ax) * rnd(1.6, 2.2), vy:(by - ay) * 2 - 20, size:rnd(5, 9), life:450}); }, i * 30); await sleep(500); fxFire(...T2W(t.x, t.y), 14, 10); break;
-    case 'charge': await fxProjectile(u, t, 'arc', 450); fxExplosion(t.x, t.y, .8); break;
-    case 'rocketAT': fxSmoke(ax - dir * 14, ay - 8, 4, .25, 10, 8); await fxProjectile(u, t, 'rocket', 300); fxExplosion(t.x, t.y, .7); break;
-    case 'atrifle': fxMuzzle(ax + dir * 16, ay - 8, dir, .8); await fxProjectile(u, t, 'tracer', 120); fxSparks(...T2W(t.x, t.y), 10); break;
-    case 'cannon': fxMuzzle(ax + dir * 20, ay - 10, dir, big); fxDust(ax, ay + 10, 4); shakeCam(2 * big); await fxProjectile(u, t, 'tracer', 140); fxExplosion(t.x, t.y, big * .8, {crater:false}); break;
-    case 'artillery': fxMuzzle(ax + dir * 16, ay - 14, dir, 1.3); fxSmoke(ax, ay - 10, 6, .4, 14, 24); shakeCam(3); await fxProjectile(u, t, 'arc', 650); fxExplosion(t.x, t.y, 1.2); break;
-    case 'mortar': fxMuzzle(ax + dir * 6, ay - 14, dir, .6); await fxProjectile(u, t, 'arc', 700); fxExplosion(t.x, t.y, .7); break;
-    case 'salvo': for (let i = 0; i < 6; i++) setTimeout(() => { fxSmoke(ax, ay - 8, 2, .4, 10, 18); fxProjectile(u, {x:t.x + rnd(-.6, .6), y:t.y + rnd(-.6, .6)}, 'rocketArc', 700).then(() => fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-20, 20), wy:T2W(t.x, t.y)[1] + rnd(-14, 14)})); }, i * 110); await sleep(1300); break;
-    case 'flak': for (let i = 0; i < 6; i++) setTimeout(() => { fxMuzzle(ax + dir * 10, ay - 12, dir, .5); const [bx, by] = T2W(t.x, t.y); part({kind:'puff', x:bx + rnd(-16, 16), y:by - 20 + rnd(-12, 12), size:6, grow:14, life:900}); }, i * 90); fxTracers(u, t, 8, '255,200,120', 14); await sleep(650); break;
-    case 'strafe': fxTracers(u, t, 14, '255,230,140', 22, 500); await sleep(550); break;
-    case 'dive': case 'bombs': await fxProjectile({x:u.x, y:u.y - .4}, t, 'bomb', 420); fxExplosion(t.x, t.y, 1.5); break;
-    case 'rockets': for (let i = 0; i < 4; i++) setTimeout(() => fxProjectile(u, {x:t.x + rnd(-.4, .4), y:t.y + rnd(-.4, .4)}, 'rocket', 260).then(() => fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-16, 16), wy:T2W(t.x, t.y)[1] + rnd(-10, 10)})), i * 90); await sleep(700); break;
-    case 'maul': { const [bx, by] = T2W(t.x, t.y); for (let i = 0; i < 3; i++) setTimeout(() => { fxBlood(bx + rnd(-8, 8), by + rnd(-6, 6), 5); shakeCam(1.5); }, i * 140); await sleep(520); break; }
-    case 'bile': { await fxProjectile(u, t, 'arc', 650); const [bx, by] = T2W(t.x, t.y); fxDust(bx, by, 14, '130,180,60'); fxSmoke(bx, by - 6, 4, .2, 8, 14); break; }
-    case 'naval': fxMuzzle(ax + dir * 20, ay - 12, dir, 1.6); fxSmoke(ax, ay - 12, 8, .5, 16, 26); shakeCam(4); await fxProjectile(u, t, 'arc', 750); fxExplosion(t.x, t.y, 1.5); break;
+    case 'smallarms': fire(); fxMuzzle(ax + dir * 14, ay - 8, dir, .5); fxTracers(u, t, u.role === 'nest' || snd === 'mg42' ? 12 : 7); if (S) impactSound(u.d, t.d, .15); await sleep(500); break;
+    case 'flamer': fire(); for (let i = 0; i < 16; i++) setTimeout(() => { const [bx, by] = T2W(t.x, t.y); part({kind:'fire', x:ax + dir * 10, y:ay - 6, vx:(bx - ax) * rnd(1.6, 2.2), vy:(by - ay) * 2 - 20, size:rnd(5, 9), life:450}); }, i * 30); await sleep(500); fxFire(...T2W(t.x, t.y), 14, 10); break;
+    case 'charge': await fxProjectile(u, t, 'arc', 450); fxExplosion(t.x, t.y, .8); bang(.8); break;
+    case 'rocketAT': fire(); fxSmoke(ax - dir * 14, ay - 8, 4, .25, 10, 8); await fxProjectile(u, t, 'rocket', 300); fxExplosion(t.x, t.y, .7); bang(.7); clang(); break;
+    case 'atrifle': fire(); fxMuzzle(ax + dir * 16, ay - 8, dir, .8); await fxProjectile(u, t, 'tracer', 120); fxSparks(...T2W(t.x, t.y), 10); clang(); break;
+    case 'cannon': fire(); fxMuzzle(ax + dir * 20, ay - 10, dir, big); fxDust(ax, ay + 10, 4); shakeCam(2 * big); await fxProjectile(u, t, 'tracer', 140); fxExplosion(t.x, t.y, big * .8, {crater:false}); bang(.6 * big); clang(); break;
+    case 'artillery': fire(); fxMuzzle(ax + dir * 16, ay - 14, dir, 1.3); fxSmoke(ax, ay - 10, 6, .4, 14, 24); shakeCam(3); whistleFor(650); await fxProjectile(u, t, 'arc', 650); fxExplosion(t.x, t.y, 1.2); bang(1.2); break;
+    case 'mortar': fire(); fxMuzzle(ax + dir * 6, ay - 14, dir, .6); whistleFor(700, 200); await fxProjectile(u, t, 'arc', 700); fxExplosion(t.x, t.y, .7); bang(.8); break;
+    case 'salvo': for (let i = 0; i < 6; i++) setTimeout(() => { if (S && i < 4) launch({gain:.8}); fxSmoke(ax, ay - 8, 2, .4, 10, 18); fxProjectile(u, {x:t.x + rnd(-.6, .6), y:t.y + rnd(-.6, .6)}, 'rocketArc', 700).then(() => { fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-20, 20), wy:T2W(t.x, t.y)[1] + rnd(-14, 14)}); bang(.8, i); }); }, i * 110); await sleep(1300); break;
+    case 'flak': fire(); for (let i = 0; i < 6; i++) setTimeout(() => { fxMuzzle(ax + dir * 10, ay - 12, dir, .5); const [bx, by] = T2W(t.x, t.y); part({kind:'puff', x:bx + rnd(-16, 16), y:by - 20 + rnd(-12, 12), size:6, grow:14, life:900}); }, i * 90); fxTracers(u, t, 8, '255,200,120', 14); await sleep(650); break;
+    case 'strafe': fire(); fxTracers(u, t, 14, '255,230,140', 22, 500); if (S) impactSound(u.d, t.d, .3); await sleep(550); break;
+    case 'dive': case 'bombs': fire(); whistleFor(420, 0); await fxProjectile({x:u.x, y:u.y - .4}, t, 'bomb', 420); fxExplosion(t.x, t.y, 1.5); bang(1.5); break;
+    case 'rockets': for (let i = 0; i < 4; i++) setTimeout(() => { if (S) launch({gain:.8}); fxProjectile(u, {x:t.x + rnd(-.4, .4), y:t.y + rnd(-.4, .4)}, 'rocket', 260).then(() => { fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-16, 16), wy:T2W(t.x, t.y)[1] + rnd(-10, 10)}); bang(.8, i); }); }, i * 90); await sleep(700); break;
+    case 'maul': { if (S) sfx(snd); const [bx, by] = T2W(t.x, t.y); for (let i = 0; i < 3; i++) setTimeout(() => { fxBlood(bx + rnd(-8, 8), by + rnd(-6, 6), 5); shakeCam(1.5); }, i * 140); await sleep(520); break; }
+    case 'bile': { if (S) sfx(snd); await fxProjectile(u, t, 'arc', 650); const [bx, by] = T2W(t.x, t.y); fxDust(bx, by, 14, '130,180,60'); fxSmoke(bx, by - 6, 4, .2, 8, 14); break; }
+    case 'naval': fire(); fxMuzzle(ax + dir * 20, ay - 12, dir, 1.6); fxSmoke(ax, ay - 12, 8, .5, 16, 26); shakeCam(4); whistleFor(750); await fxProjectile(u, t, 'arc', 750); fxExplosion(t.x, t.y, 1.5); bang(1.5); break;
   }
-  if (t.d.foot) { const [bx, by] = T2W(t.x, t.y); fxBlood(bx, by, killed ? 14 : 7); if (goreLevel() || t.d.nat === 'zed') sfx(t.d.nat === 'zed' ? (killed ? 'zdie' : 'zhurt') : killed ? 'scream' : 'cry', .1); }
-  if (killed) { await sleep(120); fxExplosion(t.x, t.y, t.d.foot ? .5 : 1.4, {crater:!t.d.foot}); if (t.d.foot) stampFallen(t.x, t.y, t.d.nat, 2 + (Math.random() * 2 | 0)); else if (!t.d.air && !t.d.sea) stampFallen(t.x, t.y, t.d.nat, Math.random() < .5 ? 1 : 0); }
+  if (t.d.foot) { const [bx, by] = T2W(t.x, t.y); fxBlood(bx, by, killed ? 14 : 7); if (S && (goreLevel() || t.d.nat === 'zed')) sfx(t.d.nat === 'zed' ? (killed ? 'zdie' : 'zhurt') : killed ? 'scream' : 'cry', .1); }
+  if (killed) { await sleep(120);
+    const [wx, wy] = T2W(t.x, t.y);
+    if (t.dk === 'cookoff') {                           // the ammunition goes up: the turret lifts off, then the rounds cook off for seconds
+      fxExplosion(t.x, t.y, 1.8, {crater:true}); part({kind:'chunk', x:wx, y:wy - 10, vx:rnd(-50, 50), vy:-rnd(220, 300), g:520, floor:wy + rnd(8, 22), spin:rnd(-9, 9), w:14, h:9, life:2600});
+      for (let i = 0; i < 7; i++) setTimeout(() => { fxSparks(wx + rnd(-8, 8), wy - 6, 8); fxFire(wx, wy - 8, 6, 9); if (Math.random() < .4) fxExplosion(t.x, t.y, .45, {crater:false, wx:wx + rnd(-10, 10), wy:wy + rnd(-8, 4)}); }, 350 + i * 330);
+      for (let i = 0; i < 10; i++) setTimeout(() => part({kind:'fire', x:wx + rnd(-3, 3), y:wy - 12, vx:rnd(-6, 6), vy:-rnd(90, 160), size:rnd(6, 10), life:600}), 200 + i * 90);   // a jet of flame from the open turret ring
+    } else if (t.dk === 'brewup') {                      // burns where it stands, black smoke climbing
+      fxExplosion(t.x, t.y, 1.2, {crater:false});
+      for (let i = 0; i < 10; i++) setTimeout(() => { fxFire(wx + rnd(-6, 6), wy - 6, 5, 9); fxSmoke(wx, wy - 14, 2, .9, 11, 44); }, 150 + i * 200);
+    } else if (t.dk === 'knockout') {                    // the shot goes in, a flash and a puff from the hatches, the crew are out
+      fxExplosion(t.x, t.y, .7, {crater:false}); fxSparks(wx, wy - 4, 14);
+      for (let i = 0; i < 6; i++) setTimeout(() => fxSmoke(wx + rnd(-4, 4), wy - 12, 1, .6, 7, 30), 300 + i * 260);
+    } else fxExplosion(t.x, t.y, t.d.foot ? .5 : 1.4, {crater:!t.d.foot});
+    if (t.d.foot) stampFallen(t.x, t.y, t.d.nat, 2 + (Math.random() * 2 | 0)); else if (!t.d.air && !t.d.sea) stampFallen(t.x, t.y, t.d.nat, Math.random() < .5 ? 1 : 0); }
 }
 
 /* ---------- drawing (world space) ---------- */
@@ -3484,6 +3802,10 @@ function fxDraw(ctx, now) {
       case 'spark': ctx.fillStyle = `rgba(255,${Math.round(230 - 100 * k)},120,${1 - k})`; ctx.fillRect(p.x, p.y, 2, 2); break;
       case 'blood': ctx.fillStyle = `rgba(${120 - 40 * k | 0},10,8,${1 - k * .4})`; ctx.fillRect(p.x, p.y, p.size, p.size); if (k > .9 && Math.random() < .3 && terrainCanvas) { const tg = terrainCanvas.getContext('2d'); tg.fillStyle = 'rgba(70,10,6,.5)'; tg.fillRect(p.x, p.y, p.size + 1, p.size); } break;
       case 'debris': ctx.fillStyle = p.col; ctx.globalAlpha = 1 - k; ctx.fillRect(p.x, p.y, p.size, p.size); ctx.globalAlpha = 1; break;
+      case 'chunk': {                                   // a turret thrown clear by an ammunition fire, trailing smoke, tumbling, coming to rest
+        if (p.y > p.floor) { p.y = p.floor; p.vy *= -.25; p.vx *= .5; p.spin *= .4; }
+        p.rot = (p.rot || 0) + p.spin * dt; if (Math.random() < .5 && k < .7) part({kind:'smoke', x:p.x, y:p.y, vx:0, vy:-8, size:3, grow:12, life:900, shade:.85});
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = Math.min(1, (1 - k) * 4); ctx.fillStyle = '#2a2622'; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.fillRect(p.w / 2 - 1, -1.5, p.w * .9, 3); ctx.restore(); break; }
       case 'water': ctx.fillStyle = `rgba(230,240,248,${1 - k})`; ctx.fillRect(p.x, p.y, p.size, p.size); break;
       case 'ring': ctx.strokeStyle = `rgba(${p.col},${(1 - k) * .6})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(p.x, p.y, p.size + p.grow * k, (p.size + p.grow * k) * .45, 0, 0, 7); ctx.stroke(); break;
       case 'tracer': { ctx.globalCompositeOperation = 'lighter'; const x = p.ax + (p.bx - p.ax) * k, y = p.ay + (p.by - p.ay) * k, x2 = p.ax + (p.bx - p.ax) * Math.max(0, k - .25), y2 = p.ay + (p.by - p.ay) * Math.max(0, k - .25);
@@ -3734,8 +4056,8 @@ function battleScene(att, def, res, preAtt, preDef) {
   if (FAST || !SET.battle) return Promise.resolve();
   return new Promise(done => {
     const wrap = $('#battlewrap'); wrap.hidden = false; bcv.width = BW; bcv.height = BH; BAT.parts = [];
-    const counter = res.counter > 0 || res.cKilled, dur = counter ? 4600 : 3000; let skip = false;
-    const t0 = performance.now();
+    const counter = res.counter > 0 || res.cKilled; let dur = counter ? 4600 : 3000, skip = false;
+    const t0 = BAT.t0 = performance.now();
     const fin = () => { wrap.hidden = true; wrap.onclick = null; done(); };
     wrap.onclick = () => { skip = true; };
     const mk = (u, side, hp0, hp1) => {
@@ -3743,18 +4065,25 @@ function battleScene(att, def, res, preAtt, preDef) {
       return {u, side, nat:G.teams[u.team].nat, hp0, hp1:Math.max(0, hp1), n0, n1, ter:terr(u.x, u.y), cls:fxClass(u.d), air:!!u.d.air,
         figs:Array.from({length:n0}, (_, i) => ({i, alive:true, dieT:0, recoil:0, rnd:Math.random()}))};
     };
-    const A = mk(att, 0, preAtt, att.hp), D = mk(def, 1, preDef, def.hp);
-    // which figures fall, and when
-    const plan = (S, at) => { const lost = S.n0 - S.n1; const order = S.figs.slice().sort((a, b) => a.rnd - b.rnd); for (let i = 0; i < lost; i++) order[i].dieAt = at + i * 140; };
-    plan(D, 1500); if (counter) plan(A, 3200);
+    const A = mk(att, 0, preAtt, att.hp), D = mk(def, 1, preDef, def.hp); A.foe = D; D.foe = A;
+    // which figures fall, and how: each man and each vehicle dies its own way, so no two in a group go down alike.
+    // They fall when a round actually reaches them (fireVolley strikes them); the deadline only catches any the volley missed.
+    const plan = (S, at, by) => { const lost = S.n0 - S.n1, order = S.figs.slice().sort((a, b) => a.rnd - b.rnd); let prev;
+      for (let i = 0; i < lost; i++) { const f = order[i]; f.doomed = true; f.deadline = at + i * 160;
+        if (S.u.d.foot) f.death = EXPLOSIVE.has(by) && Math.random() < .65 ? 'blast' : ['back', 'back', 'drop', 'spin', 'kneel'][Math.random() * 5 | 0];
+        else { let v = deathKind(S.u.d) || 'boom'; if (v === prev) v = deathKind(S.u.d) || 'boom'; f.death = prev = v; } } };
+    const hitA = IMPACT_MS[A.cls] || 600, hitD = IMPACT_MS[D.cls] || 600, cAt = Math.max(2300, 450 + hitA + 1000);
+    plan(D, 450 + hitA + 500, A.cls); if (counter) plan(A, cAt + hitD + 500, D.cls);
+    dur = counter ? cAt + hitD + 1700 : 450 + hitA + 1700;
+    if (D.n1 < D.n0 && !counter) dur += 700; if (counter && A.n1 < A.n0) dur += 900;     // time for the falls to finish and the wrecks to burn
     const bg = mkCanvas(BW, BH), bgg = bg.getContext('2d'); drawBackdrop(bgg, 0, A.ter, G.theme, G.weather, 1); drawBackdrop(bgg, BW / 2, D.ter, G.theme, G.weather, 2);
     const fired = {a:false, c:false};
     let last = performance.now();
     const step = () => {
       const now = performance.now(), k = now - t0, dt = Math.min(.05, (now - last) / 1000); last = now;
       if (skip || k > dur) return fin();
-      if (!fired.a && k > 450) { fired.a = true; fireVolley(A, D, 0); }
-      if (counter && !fired.c && k > 2300) { fired.c = true; fireVolley(D, A, 0); }
+      if (!fired.a && k > 450) { fired.a = true; fireVolley(A, D, 0); sayIn(A, 'atk'); }
+      if (counter && !fired.c && k > cAt) { fired.c = true; fireVolley(D, A, 0); if (Math.random() < .6) sayIn(D, 'atk'); }
       const g = bctx; g.setTransform(1, 0, 0, 1, 0, 0);
       const sh = BAT.shake * (Math.random() - .5); BAT.shake *= .9; g.setTransform(1, 0, 0, 1, sh, sh * .6);
       g.drawImage(bg, 0, 0); g.imageSmoothingEnabled = false;
@@ -3770,80 +4099,211 @@ function battleScene(att, def, res, preAtt, preDef) {
         while (g.measureText(S.u.d.n).width > 172 && fs > 11) { fs--; g.font = `bold ${fs}px "Courier Prime",monospace`; }
         g.fillText(S.u.d.n, X + 50, 32);
         g.fillStyle = '#b9b090'; g.font = '13px "Courier Prime",monospace'; g.fillText(S.u.name || '', X + 50, 50);
-        const shown = S.figs.some(f => f.dieAt && k > f.dieAt) ? S.hp1 : S.hp0;
+        const shown = S.figs.some(f => f.dieAt != null && k > f.dieAt) ? S.hp1 : S.hp0;
         g.fillStyle = '#e8c040'; g.font = 'bold 20px "Courier Prime",monospace'; g.textAlign = 'right'; g.fillText('HP ' + Math.ceil(shown / 10), X + 290, 32);
         const r = rankOf(S.u); if (r) { g.fillStyle = '#e8c040'; g.font = '13px "Courier Prime",monospace'; g.fillText(RANKS[r].n.toUpperCase(), X + 290, 52); }
       }
       g.fillStyle = '#111'; g.fillRect(BW / 2 - 3, 0, 6, BH);
       const dmgLbl = (S, at, val) => { if (k > at && k < at + 1100 && val > 0) { const a = 1 - (k - at) / 1100; g.globalAlpha = a; g.font = 'bold 40px "Stardos Stencil",Impact,sans-serif'; g.textAlign = 'center'; g.fillStyle = '#000'; g.fillText('-' + val + '%', (S.side ? BW * .75 : BW * .25) + 2, 128 - (1 - a) * 30 + 2); g.fillStyle = '#ffd34a'; g.fillText('-' + val + '%', S.side ? BW * .75 : BW * .25, 128 - (1 - a) * 30); g.globalAlpha = 1; } };
-      dmgLbl(D, 1450, res.dmg); if (counter) dmgLbl(A, 3150, res.counter);
+      const lblAt = (S, est) => { const d = S.figs.filter(f => f.dieAt != null).map(f => f.dieAt); return d.length ? Math.min(...d) : est; };   // the damage shows as the first round lands
+      dmgLbl(D, lblAt(D, 450 + hitA), res.dmg); if (counter) dmgLbl(A, lblAt(A, cAt + hitD), res.counter);
       setTimeout(step, 16);                                   // timer-driven so it also completes in a background tab
     };
     step();
   });
 }
 function figPoint(S, f) { const p = slotPos(f.i, S.n0, S.side, S.air); return {x:p.x + 32 * p.s, y:p.y + 34 * p.s, s:p.s}; }
+const EXPLOSIVE = new Set(['cannon', 'artillery', 'naval', 'mortar', 'salvo', 'bombs', 'dive', 'rockets', 'charge', 'rocketAT']);
+const fall = k => k <= 0 ? 0 : k >= 1 ? 1 : k < .75 ? (k / .75) ** 2 : 1 - .1 * Math.sin((k - .75) / .25 * Math.PI);   // gravity, then a small bounce as the body lands
+const LAND = {back:520, drop:820, spin:760, kneel:1350, blast:720};
+/* where each man stands in a squad sprite (32-grid), and where the lone man stands in the one-man sprite */
+const SQUAD = {inf:{pos:[[1, 9], [9, 6], [16, 10]], solo:[9, 10]}, two:{pos:[[2, 13], [13, 8]], solo:[13, 8]}};
+const squadOf = S => (NATION[S.nat] && NATION[S.nat].zed) || ['cav', 'mortar'].includes(S.u.role) ? null : S.u.role === 'inf' ? SQUAD.inf : SQUAD.two;
+function pose(death, e, away) {                         // one man's fall, e ms after he is hit
+  let ang = 0, dx = 0, dy = 0, sx = 1, sy = 1;
+  switch (death) {
+    case 'drop': { const q1 = Math.min(1, e / 220), q2 = fall((e - 220) / 600); sy = 1 - .25 * q1 + .25 * q2; ang = -away * (.2 * q1 + 1.4 * q2); dx = -away * q2 * 4; break; }      // knees go, then forward onto his face
+    case 'spin': { const q1 = Math.min(1, e / 260), q2 = fall((e - 260) / 500); sx = Math.cos(q1 * Math.PI); ang = away * q2 * 1.53; dx = away * q1 * 5; break; }                // spun round by the hit
+    case 'kneel': { const q1 = Math.min(1, e / 200), q2 = fall((e - 800) / 550); sy = 1 - .3 * q1 + .3 * q2; ang = e < 800 ? -away * .1 * Math.sin(e / 90) * q1 : -away * q2 * 1.45; break; }   // sinks to his knees, sways, slumps
+    case 'blast': { const q = Math.min(1, e / LAND.blast); dx = away * q * 60; dy = -Math.sin(q * Math.PI) * 58; ang = away * fall(q) * Math.PI * 2.5; break; }   // thrown by the explosion
+    default: { const q = fall(e / LAND.back); ang = away * q * 1.53; dx = away * q * 8; }          // knocked backwards
+  }
+  return {ang, dx, dy, sx, sy};
+}
+function turretCut(img) {                               // a vehicle sprite's silhouette: the turret is the top 42% of it
+  if (img._cut) return img._cut;
+  let top = img.height, bot = 0;
+  try { const w = img.width, h = img.height, d = img.getContext('2d').getImageData(0, 0, w, h).data;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 40) { if (y < top) top = y; bot = y; } } catch (e) {}
+  if (top >= bot) { top = img.height * .25; bot = img.height * .85; }
+  return img._cut = {top, cut:Math.round(top + (bot - top) * .42)};
+}
+/* a speech bubble over one of the side's men, in his own language, mumbled in his own voice */
+function sayIn(S, kind, f) {
+  if (!SET.fx || S.air && kind === 'hurt') return;
+  f = f || S.figs.filter(x => x.alive)[Math.random() * S.figs.filter(x => x.alive).length | 0]; if (!f) return;
+  const text = barkText(S.nat, kind, S.u.d.foot); if (!text) return;
+  const p = slotPos(f.i, S.n0, S.side, S.air);
+  BAT.parts = BAT.parts.filter(q => !(q.k === 'say' && q.side === S.side));
+  bp({k:'say', x:p.x + 32 * p.s, y:p.y + 4, text, side:S.side, life:1.5});
+  babble(S.nat + f.i, text, {gain:.5, max:1.3, quick:true, zed:S.nat === 'zed', pitch:S.u.d.foot ? 1.05 : .95});
+}
+function dieFig(S, f, now, frame, img) {
+  f.alive = false; f.deadT = now; f.deadFrame = frame;
+  const left = S.figs.filter(x => x.alive);
+  const safe = left.filter(x => !x.doomed);              // one who will live through it
+  if (!S.cried && safe.length && Math.random() < .85) { S.cried = true; const w = safe[Math.random() * safe.length | 0]; setTimeout(() => sayIn(S, 'hurt', w), 300); }   // a survivor shouts as his mates go down
+  if (!left.length && S.foe && !S.foe.crowed) { S.foe.crowed = true; setTimeout(() => sayIn(S.foe, 'kill'), 450); }                                       // the other side, as the last of them falls
+  const c = figPoint(S, f), p = slotPos(f.i, S.n0, S.side, S.air), size = 64 * p.s, away = S.side ? 1 : -1;
+  const bail = (n, burn) => { if (S.u.d.fixed || !goreLevel()) return; for (let i = 0; i < n; i++) bp({k:'bailout', x:c.x + rnd(-10, 10), y:c.y + 10, vx:away * rnd(40, 80), vy:0, nat:S.nat, life:1.4, burn:burn && Math.random() < .6 && goreLevel() > 1}); };
+  if (S.u.d.foot) {
+    f.landMs = LAND[f.death] || 520;
+    const sq = squadOf(S);                              // the squad breaks into its men, and each falls his own way
+    if (sq) f.men = sq.pos.map(([mx, my]) => { const d = f.death === 'blast' ? (Math.random() < .7 ? 'blast' : 'back') : ['back', 'back', 'drop', 'spin', 'kneel'][Math.random() * 5 | 0];
+      return {ox:mx - sq.solo[0], oy:my - sq.solo[1], solo:sq.solo, death:d, delay:Math.random() * 260}; });
+    bpBloodDir(c.x, c.y - 16, f.death === 'blast' ? 34 : 18, away);
+    if (f.death !== 'blast' && Math.random() < .5) bp({k:'helmet', x:c.x - away * 4, y:c.y - 40 * p.s, vx:away * rnd(30, 100), vy:-rnd(140, 240), g:800, floor:c.y + 6, spin:rnd(-14, 14), s:p.s, life:2.6});
+    if (S.nat === 'zed') sfx('zdie');
+    else if (goreLevel() && (S.screams = (S.screams || 0) + 1) <= 3 && Math.random() < .85) sfx(Math.random() < .75 ? 'scream' : 'cry', Math.random() * .15);
+    for (const m of (f.men || [{delay:0, death:f.death}]).slice(0, 2)) sfx('bodyfall', (m.delay + (LAND[m.death] || 520)) / 1000);
+  } else if (!S.air && !S.u.d.sea && f.death !== 'boom') {
+    sfx(f.death);
+    if (f.death === 'knockout') { bpExplode(c.x, c.y - 4, .8); bpSparks(c.x, c.y - 14, 20); bpSmoke(c.x, c.y - 20, 4, .6, 14); bail(2 + (Math.random() < .5), false); }
+    else if (f.death === 'brewup') { bpExplode(c.x, c.y, 1.3); bpFire(c.x, c.y - 10, 30); bail(Math.random() < .6 ? 1 : 0, true); }
+    else {                                              // cook-off: the turret goes up on a column of flame
+      const cut = turretCut(img), sc = size / img.height;
+      bpExplode(c.x, c.y - 10, 1.9); bpSparks(c.x, c.y - 20, 34); BAT.shake = 16;
+      bp({k:'turret', img, sy:cut.top, sh:cut.cut - cut.top, iw:img.width, dw:size, dh:(cut.cut - cut.top) * sc, flip:!!S.side,
+        x:p.x + size / 2, y:p.y + (cut.top + cut.cut) / 2 * sc, vx:away * rnd(20, 90), vy:-rnd(420, 560), g:900, floor:p.y + size * .86, spin:rnd(5, 9) * (Math.random() < .5 ? 1 : -1), rot:0, life:3});
+      f.ring = {x:p.x + size / 2, y:p.y + cut.cut * sc};
+    }
+  } else { bpExplode(c.x, c.y, 1.6); bpFire(c.x, c.y - 10, 20); sfx('boom'); if (!S.u.d.air && !S.u.d.sea) bail(2, true); }
+}
 function drawSide(g, S, k, now) {
   for (const f of S.figs.slice().sort((a, b) => (a.i >= 3 ? 0 : 1) - (b.i >= 3 ? 0 : 1))) {
-    const p = slotPos(f.i, S.n0, S.side, S.air), size = 64 * p.s;
-    let frame = Math.floor(now / 120) % 8; if (!S.u.d.foot && !S.air && !S.u.d.sea) frame = Math.floor(now / 90) % 8;
-    const dead = f.dieAt && k > f.dieAt;
-    if (dead && f.alive) { f.alive = false; f.deadT = now; const c = figPoint(S, f);
-      if (S.u.d.foot) { bpBlood(c.x, c.y - 10, 26); f.pool = 1; if (goreLevel() && (S.screams = (S.screams || 0) + 1) <= 2) sfx(S.nat === 'zed' ? 'zdie' : Math.random() < .6 ? 'scream' : 'cry'); }
-      else { bpExplode(c.x, c.y, 1.6); bpFire(c.x, c.y - 10, 20); if (!S.u.d.air && !S.u.d.sea && !S.u.d.fixed && goreLevel()) for (let i = 0; i < 2; i++) bp({k:'bailout', x:c.x + rnd(-10, 10), y:c.y + 10, vx:(S.side ? 1 : -1) * rnd(40, 80), vy:0, nat:S.nat, life:1.4, burn:Math.random() < .5 && goreLevel() > 1}); } }
-    let img = getSprite(S.nat, S.u.role, frame, false, G.theme === 'winter' ? 'w' : '');
+    const p = slotPos(f.i, S.n0, S.side, S.air), size = 64 * p.s, foot = S.u.d.foot, ground = !S.air && !S.u.d.sea;
+    let frame = Math.floor(now / 120) % 8; if (!foot && ground) frame = Math.floor(now / 90) % 8;
+    if (f.doomed && f.alive && f.dieAt == null && k > f.deadline) f.dieAt = k;     // a round the volley never landed on him: he goes down anyway
+    const dead = f.dieAt != null && k > f.dieAt;
+    if (!f.alive && f.deadFrame != null) frame = f.deadFrame;
+    const img = getSprite(S.nat, S.u.role, frame, false, G.theme === 'winter' ? 'w' : '');
+    if (dead && f.alive) dieFig(S, f, now, frame, img);
     const rec = f.recoil || 0; f.recoil = f.recoil > 0 ? Math.max(0, f.recoil - 1.2) : Math.min(0, f.recoil + 1.4);   // negative recoil: a lunge forward
     g.save();
     let x = p.x + (S.side ? rec : -rec), y = p.y + (S.air ? Math.sin(now / 260 + f.i) * 6 : 0);
-    if (!S.air) { g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + size / 2, y + size * .9, size * .38, size * .07, 0, 0, 7); g.fill(); }
-    if (dead) {
-      const dk = Math.min(1, (now - f.deadT) / 500);
-      if (S.u.d.foot && goreLevel()) { g.save(); g.fillStyle = 'rgba(90,8,6,.75)'; g.beginPath(); g.ellipse(x + size / 2, y + size * .92, size * .1 + dk * size * .22, size * .03 + dk * size * .06, 0, 0, 7); g.fill(); g.restore(); }
-      if (S.u.d.foot) { g.globalAlpha = 1 - dk * .3; g.translate(x + size / 2, y + size * .9); g.rotate((S.side ? 1 : -1) * dk * Math.PI / 2.2); g.translate(-size / 2, -size * .9); x = 0; y = 0; }
-      else { g.filter = 'brightness(.3) sepia(.5)'; if (Math.random() < .25) bpSmoke(x + size / 2 + rnd(-10, 10), y + size * .4, 1, .8); if (Math.random() < .15) bpFire(x + size / 2, y + size * .5, 2); }
+    if (f.alive && f.hitT && now - f.hitT < 180) { const q = 1 - (now - f.hitT) / 180; x += (S.side ? 1 : -1) * 4 * q; y += 2 * q; }   // flinching under fire
+    const e = dead ? now - f.deadT : 0, away = S.side ? 1 : -1;
+    if (!S.air && !(dead && foot)) { g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + size / 2, y + size * .9, size * .38, size * .07, 0, 0, 7); g.fill(); }
+    let hull = false;
+    if (dead && foot && f.men) {                       // each man of the squad, drawn alone: standing a moment, then falling his own way
+      const one = getSprite(S.nat, S.u.role, f.deadFrame, false, (G.theme === 'winter' ? 'w' : '') + '1'), u = size / 32;
+      for (const m of f.men) {
+        const e2 = e - m.delay, P = e2 > 0 ? pose(m.death, e2, away) : {ang:0, dx:0, dy:0, sx:1, sy:1}, land = LAND[m.death] || 520;
+        const px0 = (m.solo[0] + 4) * u, px = S.side ? size - px0 : px0, py = (m.solo[1] + 14) * u;      // his feet, in the one-man sprite
+        const X = x + (S.side ? -m.ox : m.ox) * u + px, Y = y + m.oy * u + py;
+        if (!m.landed && e2 > land) { m.landed = true; bpDust(X + P.dx, Y, 3); }
+        if (P.dy > -4) { g.fillStyle = 'rgba(0,0,0,.22)'; g.beginPath(); g.ellipse(X + P.dx, Y + 1, size * .14, size * .035, 0, 0, 7); g.fill(); }
+        if (goreLevel() && m.landed) { const pk = Math.min(1, (e2 - land) / 900); g.fillStyle = 'rgba(90,8,6,.75)'; g.beginPath(); g.ellipse(X + P.dx + away * size * .16, Y + 2, size * .03 + pk * size * .1, size * .012 + pk * size * .03, 0, 0, 7); g.fill(); }
+        g.save(); g.globalAlpha = 1 - Math.min(.25, Math.max(0, e2) / 2400);
+        g.translate(X + P.dx, Y + P.dy); g.rotate(P.ang); g.scale(P.sx, P.sy); g.translate(-px, -py);
+        if (S.side) { g.translate(size, 0); g.scale(-1, 1); }
+        g.drawImage(one, 0, 0, size, size); g.restore();
+      }
+      g.restore(); continue;
+    }
+    if (dead && foot) {
+      let ang = 0, dx = 0, dy = 0, sx = 1, sy = 1;
+      switch (f.death) {
+        case 'drop': { const q1 = Math.min(1, e / 220), q2 = fall((e - 220) / 600); sy = 1 - .25 * q1 + .25 * q2; ang = -away * (.2 * q1 + 1.33 * q2); dx = -away * q2 * 6; break; }       // knees go, then forward onto his face
+        case 'spin': { const q1 = Math.min(1, e / 260), q2 = fall((e - 260) / 500); sx = Math.cos(q1 * Math.PI); ang = away * q2 * 1.53; dx = away * q1 * 6; break; }               // spun round by the hit
+        case 'kneel': { const q1 = Math.min(1, e / 200), q2 = fall((e - 800) / 550); sy = 1 - .3 * q1 + .3 * q2; ang = e < 800 ? -away * .1 * Math.sin(e / 90) * q1 : -away * q2 * 1.45; break; }   // sinks to his knees, sways, slumps
+        case 'blast': { const q = Math.min(1, e / LAND.blast); dx = away * q * 70; dy = -Math.sin(q * Math.PI) * 64; ang = away * fall(q) * Math.PI * 2.5; break; }   // thrown by the explosion
+        default: { const q = fall(e / LAND.back); ang = away * q * 1.53; dx = away * q * 9; }          // knocked backwards
+      }
+      if (!f.landed && e > f.landMs) { f.landed = true; bpDust(x + size / 2 + dx, y + size * .9, 4); }
+      if (goreLevel() && f.landed) { const pk = Math.min(1, (e - f.landMs) / 900); g.save(); g.fillStyle = 'rgba(90,8,6,.75)'; g.beginPath(); g.ellipse(x + size / 2 + dx + away * size * .25, y + size * .92, size * .06 + pk * size * .2, size * .02 + pk * size * .055, 0, 0, 7); g.fill(); g.restore(); }
+      g.globalAlpha = 1 - Math.min(.3, e / 2400);
+      const piv = f.death === 'blast' && e < LAND.blast ? size * .55 : size * .9;
+      g.translate(x + size / 2 + dx, y + piv + dy); g.rotate(ang); g.scale(sx, sy); g.translate(-size / 2, -piv); x = 0; y = 0;
+    } else if (dead && ground && f.death !== 'boom') {
+      const v = f.death;
+      g.filter = v === 'knockout' ? 'brightness(.55) sepia(.3)' : 'brightness(.28) sepia(.5)';
+      const cx = x + size / 2;
+      if (v === 'knockout') { if (Math.random() < .2) bpSmoke(cx + rnd(-8, 8), y + size * .35, 1, .55, 10); }
+      else if (v === 'brewup') { if (Math.random() < .55) bpFire(cx + rnd(-12, 12), y + size * .45, 2); if (Math.random() < .4) bpSmoke(cx + rnd(-10, 10), y + size * .3, 1, .95, 18); }
+      else { hull = true; const r = f.ring;
+        if (e < 2200) { for (let i = 0; i < 2; i++) bp({k:'fire', x:r.x + rnd(-6, 6), y:r.y, vx:rnd(-20, 20), vy:-rnd(160, 320), size:rnd(7, 13), life:rnd(.35, .6)}); if (Math.random() < .25) { bpSparks(r.x, r.y, 6); bpFlash(r.x + rnd(-10, 10), r.y - rnd(0, 20), 18); } }
+        else { if (Math.random() < .45) bpFire(r.x, r.y, 2); if (Math.random() < .35) bpSmoke(r.x, r.y - 10, 1, .95, 18); } }
+    } else if (dead) {
+      const dk = Math.min(1, e / 500); g.filter = 'brightness(.3) sepia(.5)'; if (Math.random() < .25) bpSmoke(x + size / 2 + rnd(-10, 10), y + size * .4, 1, .8); if (Math.random() < .15) bpFire(x + size / 2, y + size * .5, 2);
       if (S.air) { y += dk * 120; g.globalAlpha = 1 - dk; }
     }
-    if (S.side) { g.translate(x + size, y); g.scale(-1, 1); g.drawImage(img, 0, 0, size, size); } else g.drawImage(img, x, y, size, size);
+    if (S.side) { g.translate(x + size, y); g.scale(-1, 1); x = 0; y = 0; }
+    if (hull) { const c = turretCut(img), sc = size / img.height; g.drawImage(img, 0, c.cut, img.width, img.height - c.cut, x, y + c.cut * sc, size, (img.height - c.cut) * sc); }   // the hull, its turret gone
+    else g.drawImage(img, x, y, size, size);
     g.restore();
   }
 }
 /* ---------- volleys ---------- */
 function muzzleOf(S, f) { const p = slotPos(f.i, S.n0, S.side, S.air), dir = S.side ? -1 : 1; return {x:p.x + (S.side ? 6 : 58) * p.s, y:p.y + (S.u.d.foot ? 30 : 22) * p.s, dir, s:p.s}; }
+/* when the first rounds of each kind of volley reach the target (ms after the volley starts) */
+const IMPACT_MS = {smallarms:500, maul:400, bile:900, rocketAT:600, atrifle:300, flamer:700, charge:800, cannon:450, artillery:1500, naval:1600, mortar:1250, salvo:1400, flak:600, strafe:700, dive:1400, bombs:1400, rockets:700};
+/* Every sound here is triggered by the picture: the report at each muzzle flash, the whistle while the shell falls,
+   the detonation as it lands, and the man or tank it was meant for goes down with it. */
 function fireVolley(S, T, delay) {
-  const shooters = S.figs.filter(f => f.alive), targets = T.figs;
+  const shooters = S.figs.filter(f => f.alive), targets = T.figs, n = shooters.length || 1;
   const pick = () => targets[Math.floor(Math.random() * targets.length)];
+  const aim = () => { const d = targets.find(f => f.doomed && f.alive && f.dieAt == null && !f.aimed); if (d) { d.aimed = true; return d; } return pick(); };   // shells go to the men they will kill
   const hitPt = f => figPoint(T, f);
   const later = (ms, fn) => setTimeout(fn, ms + delay);
-  const cls = S.cls;
-  sfx(S.u.d.snd);
+  const strike = (tf, p = 1) => { if (tf && tf.doomed && tf.alive && tf.dieAt == null && Math.random() < p) tf.dieAt = performance.now() - BAT.t0; };
+  const near = tf => targets.find(o => o !== tf && Math.abs(o.i - tf.i) === 1);
+  const cls = S.cls, snd = S.u.d.snd, armour = !T.air && (T.u.d.mt === 'tread' || T.u.d.sea), vol = Math.min(1, 1.3 / Math.sqrt(n));
+  let booms = 0; const boom = size => { const b = booms++; if (b < 6) boomAt(size, {gain:b < 2 ? 1 : .6}); };   // a whole battery landing: the first few loud, the rest under them
+  let whistles = 0;
+  if (['smallarms', 'flak', 'strafe', 'flamer'].includes(cls)) later(0, () => shot(snd));     // one long burst for the squad, starting with the first flash
+  else if (cls === 'maul' || cls === 'bile') later(0, () => sfx(snd));
   shooters.forEach((f, idx) => {
     const m = muzzleOf(S, f), stg = idx * 70;
     switch (cls) {
       case 'smallarms': {
-        const rate = S.u.d.snd === 'mg42' || S.u.role === 'nest' ? 26 : S.u.d.snd === 'ppsh' ? 20 : S.u.d.snd === 'garand' ? 8 : 12;
-        for (let i = 0; i < rate; i++) later(stg + i * (900 / rate), () => { bpFlash(m.x, m.y, 10 * m.s); const tf = pick(), h = hitPt(tf); bpTracer(m.x, m.y, h.x + rnd(-20, 20), h.y + rnd(-14, 14)); if (Math.random() < .5) { if (T.u.d.foot && Math.random() < .5) bpBlood(h.x + rnd(-16, 16), h.y + rnd(-10, 10), 3); else bpDust(h.x + rnd(-24, 24), h.y + 26, 1); } });
+        const rate = snd === 'mg42' || S.u.role === 'nest' ? 26 : snd === 'ppsh' ? 20 : snd === 'garand' ? 8 : 12;
+        for (let i = 0; i < rate; i++) later(stg + i * (900 / rate), () => { bpFlash(m.x, m.y, 10 * m.s); const tf = pick(), h = hitPt(tf); bpTracer(m.x, m.y, h.x + rnd(-20, 20), h.y + rnd(-14, 14));
+          if (armour) { if (Math.random() < .55) { bpSparks(h.x + rnd(-18, 18), h.y + rnd(-14, 6), 4); if ((T.rico = (T.rico || 0) + 1) <= 6 && Math.random() < .6) sfxNow('rico'); strike(tf, .15); } }   // rounds whining off the armour
+          else if (Math.random() < .5) { if (T.u.d.foot && Math.random() < .5) { bpBlood(h.x + rnd(-16, 16), h.y + rnd(-10, 10), 3); if (tf.alive) tf.hitT = performance.now(); strike(tf, .35); } else bpDust(h.x + rnd(-24, 24), h.y + 26, 1); } });
         break; }
-      case 'maul': later(stg * 2, () => { f.recoil = -46; BAT.shake = 3; for (let i = 0; i < 3; i++) setTimeout(() => { const h = hitPt(pick()); bpBlood(h.x + rnd(-14, 14), h.y + rnd(-14, 6), 10); }, 160 + i * 120); }); break;
-      case 'bile': later(stg * 2, () => { const h = hitPt(pick()); bpArc(m.x, m.y - 26, h.x, h.y, 700, 150, 'bile', () => { for (let i = 0; i < 18; i++) bp({k:'goo', x:h.x + rnd(-10, 10), y:h.y + rnd(-8, 4), vx:rnd(-120, 120), vy:-rnd(30, 160), g:500, size:rnd(2, 4), life:rnd(.5, .9)}); bpSmoke(h.x, h.y, 4, .1, 14); }); }); break;
-      case 'rocketAT': later(stg, () => { bpSmoke(m.x - m.dir * 70, m.y, 6, .2, 18); bpFlash(m.x, m.y, 18); const h = hitPt(pick()); bpRocket(m.x, m.y, h.x, h.y, 420, () => bpExplode(h.x, h.y, 1.1)); }); break;
-      case 'atrifle': later(stg, () => { bpFlash(m.x, m.y, 26); BAT.shake = 4; const h = hitPt(pick()); bpTracer(m.x, m.y, h.x, h.y, 3); setTimeout(() => bpSparks(h.x, h.y, 14), 90); }); break;
+      case 'maul': later(stg * 2, () => { f.recoil = -46; BAT.shake = 3; const tf = aim(); for (let i = 0; i < 3; i++) setTimeout(() => { const h = hitPt(tf); bpBlood(h.x + rnd(-14, 14), h.y + rnd(-14, 6), 10); if (i === 2) strike(tf); }, 160 + i * 120); }); break;
+      case 'bile': later(stg * 2, () => { const tf = aim(), h = hitPt(tf); bpArc(m.x, m.y - 26, h.x, h.y, 700, 150, 'bile', () => { for (let i = 0; i < 18; i++) bp({k:'goo', x:h.x + rnd(-10, 10), y:h.y + rnd(-8, 4), vx:rnd(-120, 120), vy:-rnd(30, 160), g:500, size:rnd(2, 4), life:rnd(.5, .9)}); bpSmoke(h.x, h.y, 4, .1, 14); strike(tf); }); }); break;
+      case 'rocketAT': later(stg, () => { shot(snd, {gain:vol}); bpSmoke(m.x - m.dir * 70, m.y, 6, .2, 18); bpFlash(m.x, m.y, 18); const tf = aim(), h = hitPt(tf);
+        bpRocket(m.x, m.y, h.x, h.y, 420, () => { bpExplode(h.x, h.y, 1.1); boom(.8); if (armour) sfxNow('clang'); strike(tf); }); }); break;
+      case 'atrifle': later(stg, () => { shot(snd, {gain:vol}); bpFlash(m.x, m.y, 26); BAT.shake = 4; const tf = aim(), h = hitPt(tf); bpTracer(m.x, m.y, h.x, h.y, 3);
+        setTimeout(() => { bpSparks(h.x, h.y, 14); if (armour) sfxNow('clang'); strike(tf); }, 90); }); break;
       case 'flamer': for (let i = 0; i < 28; i++) later(stg + i * 30, () => { const h = hitPt(pick()); bp({k:'fire', x:m.x, y:m.y, vx:(h.x - m.x) * rnd(1.4, 1.9), vy:(h.y - m.y) * 1.8 - 30, size:rnd(8, 16), life:.55}); });
-        later(stg + 600, () => { for (const tf of targets) { const h = hitPt(tf); bpFire(h.x, h.y, 10); } }); break;
-      case 'charge': later(stg, () => { const h = hitPt(pick()); bpArc(m.x, m.y, h.x, h.y, 600, 120, 'satchel', () => bpExplode(h.x, h.y, 1.3)); }); break;
-      case 'cannon': later(stg * 2, () => { const big = S.u.role === 'htank' || S.u.role === 'pak' ? 1.5 : 1.1; bpFlash(m.x, m.y, 34 * big); bpFlash(m.x, m.y - 8, 14); bpFlash(m.x, m.y + 8, 14);
-        bpSmoke(m.x, m.y, 5, .4, 22); bpDust(m.x - m.dir * 40, m.y + 40, 4); f.recoil = 14; BAT.shake = 6 * big; const h = hitPt(pick()); bpTracer(m.x, m.y, h.x, h.y, 5, 120); setTimeout(() => { bpExplode(h.x, h.y, .9 * big); bpSparks(h.x, h.y, 16); }, 130); }); break;
-      case 'artillery': case 'naval': later(stg * 3, () => { bpFlash(m.x, m.y - 14, 36); bpSmoke(m.x, m.y - 10, 8, .45, 26); f.recoil = 12; BAT.shake = 7;
+        later(stg + 600, () => { for (const tf of targets) { const h = hitPt(tf); bpFire(h.x, h.y, 10); setTimeout(() => strike(tf), rnd(0, 300)); } }); break;
+      case 'charge': later(stg, () => { const tf = aim(), h = hitPt(tf); bpArc(m.x, m.y, h.x, h.y, 600, 120, 'satchel', () => { bpExplode(h.x, h.y, 1.3); boom(1.1); strike(tf); strike(near(tf), .5); }); }); break;
+      case 'cannon': later(stg * 2, () => { const big = S.u.role === 'htank' || S.u.role === 'pak' ? 1.5 : 1.1; shot(snd, {gain:vol}); bpFlash(m.x, m.y, 34 * big); bpFlash(m.x, m.y - 8, 14); bpFlash(m.x, m.y + 8, 14);
+        bpSmoke(m.x, m.y, 5, .4, 22); bpDust(m.x - m.dir * 40, m.y + 40, 4); f.recoil = 14; BAT.shake = 6 * big; const tf = aim(), h = hitPt(tf); bpTracer(m.x, m.y, h.x, h.y, 5, 120);
+        setTimeout(() => { bpExplode(h.x, h.y, .9 * big); bpSparks(h.x, h.y, 16); boom(.6 * big); if (armour) sfxNow('clang'); strike(tf); }, 130); }); break;
+      case 'artillery': case 'naval': later(stg * 3, () => { shot(snd, {gain:vol}); bpFlash(m.x, m.y - 14, 36); bpSmoke(m.x, m.y - 10, 8, .45, 26); f.recoil = 12; BAT.shake = 7;
         bp({k:'shellUp', x:m.x, y:m.y - 14, vx:m.dir * 260, vy:-700, life:.6});
-        setTimeout(() => { const h = hitPt(pick()); bp({k:'shellDown', x:h.x + rnd(-30, 30), y:-20, ty:h.y, vy:900, life:1.2, done:() => bpExplode(h.x + rnd(-20, 20), h.y + 10, cls === 'naval' ? 2 : 1.5)}); }, 900); }); break;
-      case 'mortar': later(stg * 2, () => { bpFlash(m.x - m.dir * 20, m.y - 30, 14); const h = hitPt(pick()); bpArc(m.x - m.dir * 20, m.y - 30, h.x, h.y, 900, 260, 'mortar', () => bpExplode(h.x, h.y, 1)); }); break;
-      case 'salvo': for (let i = 0; i < 6; i++) later(stg + i * 120, () => { bpFlash(m.x, m.y - 10, 16); bpSmoke(m.x - m.dir * 30, m.y, 3, .25, 20); const h = hitPt(pick());
-        bpRocket(m.x, m.y - 10, h.x + rnd(-30, 30), h.y, 1000, () => bpExplode(h.x + rnd(-20, 20), h.y, 1.1), 220); }); break;
-      case 'flak': for (let i = 0; i < 10; i++) later(stg + i * 90, () => { bpFlash(m.x, m.y - 14, 12); const h = hitPt(pick());
-        if (T.air) { bpTracer(m.x, m.y - 14, h.x + rnd(-40, 40), h.y + rnd(-30, 30), 2); setTimeout(() => bp({k:'puff', x:h.x + rnd(-40, 40), y:h.y + rnd(-30, 30), size:6, grow:26, life:1.1}), 160); }
-        else { bpTracer(m.x, m.y - 14, h.x + rnd(-20, 20), h.y, 2); bpDust(h.x + rnd(-20, 20), h.y + 24, 1); } }); break;
-      case 'strafe': later(stg, () => { for (let i = 0; i < 16; i++) setTimeout(() => { bpFlash(m.x, m.y, 10); const tx = BW / 2 + 40 + i * 26 + rnd(-6, 6); bpTracer(m.x, m.y, tx, BH * .7 + rnd(-10, 30), 2); setTimeout(() => bpDust(tx, BH * .72 + rnd(0, 30), 1), 100); }, i * 45); }); break;
-      case 'dive': case 'bombs': later(stg * 2, () => { const h = hitPt(pick()); bp({k:'bomb', x:m.x, y:m.y + 20, vx:(h.x - m.x) * 1.2, vy:120, g:900, ty:h.y + 20, life:1.2, done:() => bpExplode(h.x, h.y + 10, 2)}); }); break;
-      case 'rockets': for (let i = 0; i < 4; i++) later(stg + i * 100, () => { bpFlash(m.x, m.y + 10, 12); const h = hitPt(pick()); bpRocket(m.x, m.y + 10, h.x + rnd(-20, 20), h.y, 380, () => bpExplode(h.x, h.y, 1.2)); }); break;
+        const tf = aim(), h = hitPt(tf), fall = (h.y + 20) / 900;                 // the shell comes down at 900 px/s from just above the frame
+        if (whistles++ < 2) setTimeout(() => incomingTo(.55 + fall, {gain:vol}), 350);
+        setTimeout(() => bp({k:'shellDown', x:h.x + rnd(-30, 30), y:-20, ty:h.y, vx:0, vy:900, life:1.2, done:() => { bpExplode(h.x + rnd(-20, 20), h.y + 10, cls === 'naval' ? 2 : 1.5); boom(cls === 'naval' ? 1.6 : 1.3); strike(tf); strike(near(tf), .4); }}), 900); }); break;
+      case 'mortar': later(stg * 2, () => { shot(snd, {gain:vol}); bpFlash(m.x - m.dir * 20, m.y - 30, 14); const tf = aim(), h = hitPt(tf);
+        if (whistles++ < 2) setTimeout(() => incomingTo(.6, {f0:1500, f1:700, gain:vol}), 300);
+        bpArc(m.x - m.dir * 20, m.y - 30, h.x, h.y, 900, 260, 'mortar', () => { bpExplode(h.x, h.y, 1); boom(.9); strike(tf); }); }); break;
+      case 'salvo': for (let i = 0; i < 6; i++) later(stg + i * 120, () => { if (idx < 2) launch({gain:vol * .9}); bpFlash(m.x, m.y - 10, 16); bpSmoke(m.x - m.dir * 30, m.y, 3, .25, 20); const tf = i < 2 ? aim() : pick(), h = hitPt(tf);
+        bpRocket(m.x, m.y - 10, h.x + rnd(-30, 30), h.y, 1000, () => { bpExplode(h.x + rnd(-20, 20), h.y, 1.1); boom(1); strike(tf, i < 2 ? 1 : .3); }, 220); }); break;
+      case 'flak': for (let i = 0; i < 10; i++) later(stg + i * 90, () => { bpFlash(m.x, m.y - 14, 12); const tf = pick(), h = hitPt(tf);
+        if (T.air) { bpTracer(m.x, m.y - 14, h.x + rnd(-40, 40), h.y + rnd(-30, 30), 2); setTimeout(() => { bp({k:'puff', x:h.x + rnd(-40, 40), y:h.y + rnd(-30, 30), size:6, grow:26, life:1.1}); strike(tf, .25); }, 160); }
+        else { bpTracer(m.x, m.y - 14, h.x + rnd(-20, 20), h.y, 2); bpDust(h.x + rnd(-20, 20), h.y + 24, 1); strike(tf, .15); } }); break;
+      case 'strafe': later(stg, () => { for (let i = 0; i < 16; i++) setTimeout(() => { bpFlash(m.x, m.y, 10); const tx = BW / 2 + 40 + i * 26 + rnd(-6, 6); bpTracer(m.x, m.y, tx, BH * .7 + rnd(-10, 30), 2);
+        setTimeout(() => { bpDust(tx, BH * .72 + rnd(0, 30), 1); const tf = targets.find(o => Math.abs(hitPt(o).x - tx) < 40); if (tf) strike(tf, .4); }, 100); }, i * 45); }); break;
+      case 'dive': case 'bombs': later(stg * 2, () => { shot(snd, {gain:vol}); const tf = aim(), h = hitPt(tf), dy = Math.max(10, h.y - m.y), fall = (-120 + Math.sqrt(14400 + 1800 * dy)) / 900;
+        if (whistles++ < 2) incomingTo(fall + .15, {f0:1700, f1:500, gain:vol});
+        bp({k:'bomb', x:m.x, y:m.y + 20, vx:(h.x - m.x) * 1.2, vy:120, g:900, ty:h.y + 20, life:1.2, done:() => { bpExplode(h.x, h.y + 10, 2); boom(1.5); strike(tf); strike(near(tf), .5); }}); }); break;
+      case 'rockets': for (let i = 0; i < 4; i++) later(stg + i * 100, () => { if (idx < 2) launch({gain:vol}); bpFlash(m.x, m.y + 10, 12); const tf = i ? pick() : aim(), h = hitPt(tf);
+        bpRocket(m.x, m.y + 10, h.x + rnd(-20, 20), h.y, 380, () => { bpExplode(h.x, h.y, 1.2); boom(.9); strike(tf, i ? .3 : 1); }); }); break;
     }
   });
 }
@@ -3852,6 +4312,7 @@ function bpFlash(x, y, s) { bp({k:'flash', x, y, size:s, life:.09}); }
 function bpTracer(x1, y1, x2, y2, w = 2, life = 140) { bp({k:'tracer', x1, y1, x2, y2, w, life:life / 1000}); }
 function bpSmoke(x, y, n, dark = .4, size = 16) { for (let i = 0; i < n; i++) bp({k:'smoke', x:x + rnd(-10, 10), y:y + rnd(-6, 6), vx:rnd(-20, 20), vy:-rnd(10, 40), size:size * rnd(.6, 1), grow:rnd(20, 40), shade:dark, life:rnd(1, 1.8)}); }
 function bpBlood(x, y, n) { const gl = goreLevel(); if (!gl) return; for (let i = 0; i < n * gl; i++) bp({k:'blood', x:x + rnd(-8, 8), y:y + rnd(-8, 8), vx:rnd(-160, 160), vy:-rnd(40, 260), g:900, size:rnd(2, 4.5), life:rnd(.5, 1)}); }
+function bpBloodDir(x, y, n, dir) { const gl = goreLevel(); if (!gl) return; for (let i = 0; i < n * gl; i++) bp({k:'blood', x:x + rnd(-6, 6), y:y + rnd(-8, 8), vx:dir * rnd(40, 260) + rnd(-40, 40), vy:-rnd(20, 220), g:900, size:rnd(2, 5), life:rnd(.5, 1.1)}); }   // spray thrown away from the shot
 function bpDust(x, y, n) { for (let i = 0; i < n; i++) bp({k:'dust', x:x + rnd(-8, 8), y, vx:rnd(-30, 30), vy:-rnd(30, 90), g:200, size:rnd(4, 9), life:rnd(.4, .8)}); }
 function bpSparks(x, y, n) { for (let i = 0; i < n; i++) bp({k:'spark', x, y, vx:rnd(-260, 260), vy:-rnd(60, 280), g:600, life:rnd(.25, .5)}); }
 function bpFire(x, y, n) { for (let i = 0; i < n; i++) bp({k:'fire', x:x + rnd(-14, 14), y:y + rnd(-8, 8), vx:rnd(-16, 16), vy:-rnd(40, 110), size:rnd(6, 13), life:rnd(.35, .8)}); }
@@ -3888,6 +4349,19 @@ function updateBattleParts(g, dt) {
         else { g.fillStyle = p.style === 'satchel' ? '#6a5a3a' : '#2a2a26'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
         if (k > .96 && p.done) { const d = p.done; p.done = null; d(); }
         break; }
+      case 'say': {                                     // a speech bubble, drifting up a little as it fades
+        const a = Math.min(1, (1 - k) * 4, p.t * 10), y = p.y - p.t * 10; g.save(); g.globalAlpha = a; g.font = 'bold 17px "Courier Prime",monospace';
+        const w = g.measureText(p.text).width + 16, h = 26, bx = Math.max(6, Math.min(BW - w - 6, p.x - w / 2)), by = Math.max(74, y - h);
+        g.fillStyle = '#f4efe0'; g.strokeStyle = '#1a1814'; g.lineWidth = 2; g.beginPath(); g.roundRect(bx, by, w, h, 7); g.fill(); g.stroke();
+        g.beginPath(); g.moveTo(p.x - 6, by + h - 1); g.lineTo(p.x + (p.side ? 7 : -7), by + h + 10); g.lineTo(p.x + 6, by + h - 1); g.fill(); g.stroke(); g.fillRect(p.x - 5, by + h - 3, 10, 3);
+        g.fillStyle = '#1a1814'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(p.text, bx + w / 2, by + h / 2 + 1); g.restore(); break; }
+      case 'turret': case 'helmet': {                   // a turret blown off its ring, or a helmet knocked off: thrown, tumbling, bouncing to rest
+        if (p.y > p.floor) { p.y = p.floor; p.vy *= -.28; p.vx *= .5; p.spin *= .4; if (p.k === 'turret' && !p.thud) { p.thud = 1; bpDust(p.x, p.y, 8); BAT.shake = Math.max(BAT.shake, 6); sfxNow('thud'); } }
+        p.rot = (p.rot || 0) + p.spin * dt; const a = Math.min(1, (1 - k) * 4);
+        g.save(); g.translate(p.x, p.y); g.rotate(p.rot); g.globalAlpha = a;
+        if (p.k === 'turret') { if (Math.random() < .6 && k < .6) bp({k:'smoke', x:p.x, y:p.y, vx:0, vy:-10, size:5, grow:18, shade:.9, life:.9}); if (p.flip) g.scale(-1, 1); g.filter = 'brightness(.4) sepia(.4)'; g.drawImage(p.img, 0, p.sy, p.iw, p.sh, -p.dw / 2, -p.dh / 2, p.dw, p.dh); }
+        else { g.fillStyle = '#4f5a3e'; g.beginPath(); g.ellipse(0, 0, 7 * p.s, 4.5 * p.s, 0, Math.PI, 0); g.fill(); g.fillRect(-8 * p.s, -.5, 16 * p.s, 2); }
+        g.restore(); break; }
       case 'shellUp': g.fillStyle = '#2a2a26'; g.fillRect(p.x, p.y, 4, 6); break;
       case 'shellDown': { g.fillStyle = '#2a2a26'; g.fillRect(p.x - 2, p.y, 4, 8); g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath(); g.moveTo(p.x, p.y - 30); g.lineTo(p.x, p.y); g.stroke();
         if (p.y >= p.ty && p.done) { const d = p.done; p.done = null; d(); p.t = p.life; } break; }
@@ -7076,6 +7550,83 @@ function launchZombies() {
   G = null; startGame(cfg);
 }
 
+/* ============================== BARKS ======================================
+   What the men say, in their own language and script: when picked, on the move, opening fire, scoring a kill,
+   taking hits, taking ground, arriving fresh, and the idle talk between fights. Each line is mumbled in the
+   speaker's own voice (babble) and shown in a speech bubble. Chinese is in traditional characters, as both
+   the Nationalists and the Communists wrote it then. */
+const BARK_LINES = {
+  ger:{sel:['Jawohl!', 'Zu Befehl!', 'Verstanden!', 'Jawohl, Herr Leutnant!', 'Los, los!'], veh:['Panzer marsch!', 'Motor läuft!', 'Fahrer, vorwärts!', 'Luke zu!', 'Jawohl!'],
+    move:['Vorwärts!', 'Marsch, marsch!', 'Mir nach!', 'Schneller!', 'Ausschwärmen!'], atk:['Feuer frei!', 'Feuer!', 'Ziel erkannt!', 'Gib ihm!', 'Handgranate!'],
+    kill:['Volltreffer!', 'Erledigt!', 'Abschuss!', 'Der ist hin!', 'Treffer!'], hurt:['Sanitäter!', 'Deckung!', 'Rückzug!', 'Ich bin getroffen!', 'Verdammt!'],
+    cap:['Gesichert!', 'Stellung genommen!', 'Das gehört jetzt uns!'], new:['Zur Stelle!', 'Melde mich zum Dienst!', 'Bereit!'],
+    idle:['Hat einer Feuer?', 'Wo bleibt die Gulaschkanone?', 'Wann geht\'s nach Hause?', 'Zu ruhig hier…', 'Schreib mal wieder, Mutti…', 'Kalt heute.']},
+  us:{sel:['Yes sir!', 'On our way!', 'Roger!', 'You got it!', 'Wilco!'], veh:['Rolling!', 'Buttoning up!', 'Roger that!', 'Step on it!', 'Let\'s roll!'],
+    move:['Let\'s go, let\'s go!', 'Keep moving!', 'Spread out!', 'Follow me!', 'Double time!'], atk:['Fire!', 'Give \'em hell!', 'On the way!', 'Light \'em up!', 'Fire in the hole!'],
+    kill:['Got him!', 'Scratch one!', 'He\'s done!', 'Target down!', 'That\'s a kill!'], hurt:['Medic!', 'We\'re hit!', 'Get down!', 'I\'m hit!', 'Pull back!'],
+    cap:['Area secure!', 'We got it!', 'Raise the flag!'], new:['Reporting for duty!', 'Ready, sir!', 'Fresh off the boat!'],
+    idle:['Got a smoke?', 'Anybody seen my letter?', 'K-rations again…', 'I\'d kill for a hot shower.', 'When\'s chow?', 'Kilroy was here.']},
+  uk:{sel:['Sir!', 'Right-o!', 'Very good, sir!', 'On it, sir!', 'Moving up!'], veh:['Driver, advance!', 'Tally-ho!', 'Off we go!', 'Hold on to your hats!', 'Driver, advance — steady!'],
+    move:['Come on, lads!', 'Keep your heads down!', 'Follow me, lads!', 'Pick it up!', 'Steady, steady…'], atk:['Fire!', 'Let \'em have it!', 'Engage!', 'Rapid fire!', 'Give \'em a bit of stick!'],
+    kill:['Brewed up!', 'Good shooting!', 'He\'s burning!', 'Got the blighter!', 'Bang on!'], hurt:['Stretcher-bearer!', 'Bale out!', 'Take cover!', 'I\'ve been hit!', 'Bloody hell!'],
+    cap:['Position taken, sir!', 'Ours now!', 'Jolly good!'], new:['Reporting, sir!', 'Ready for it, sir!'],
+    idle:['Brew up, anyone?', 'Fancy a cuppa?', 'Bully beef again…', 'Roll on demob.', 'Who\'s got the char?', 'Lovely weather for it.']},
+  su:{sel:['Есть!', 'Так точно!', 'Слушаюсь!', 'Понял!', 'Вперёд!'], veh:['Вперёд!', 'Полный ход!', 'Заводи!', 'Механик, вперёд!', 'Есть!'],
+    move:['За мной!', 'Быстрее!', 'Вперёд, товарищи!', 'Не отставать!', 'Шире шаг!'], atk:['Огонь!', 'За Родину!', 'Ура!', 'Бей их!', 'Огонь по фашистам!'],
+    kill:['Готов!', 'Горит!', 'Попал!', 'Есть один!', 'Капут фрицу!'], hurt:['Санитар!', 'Ложись!', 'Горим!', 'Меня ранило!', 'Ни шагу назад!'],
+    cap:['Наше!', 'Взяли!', 'Знамя сюда!'], new:['Прибыл!', 'Готов к бою!'],
+    idle:['Махорка есть?', 'Где же кухня?', 'Эх, Катюша…', 'Письмо бы из дома…', 'Холодно, братцы.', 'Скоро Берлин!']},
+  fr:{sel:['Oui, mon général!', 'À vos ordres!', 'Compris!', 'Bien, mon lieutenant!', 'En avant!'], veh:['En avant!', 'Roulez!', 'Moteur!', 'Allez, allez!'],
+    move:['Suivez-moi!', 'Plus vite!', 'Dispersez-vous!', 'Allez, les gars!'], atk:['Feu!', 'Tirez!', 'Pour la France!', 'Feu à volonté!', 'Vive la France!'],
+    kill:['Touché!', 'Détruit!', 'Bien joué!', 'Il brûle!', 'En plein dans le mille!'], hurt:['Infirmier!', 'À couvert!', 'Repli!', 'Je suis touché!', 'Merde!'],
+    cap:['Position prise!', 'C\'est à nous!', 'Libérée!'], new:['Présent!', 'À vos ordres!'],
+    idle:['T\'as du feu?', 'Encore du singe…', 'Vivement la quille!', 'Paris nous attend.', 'Un petit café…']},
+  pl:{sel:['Tak jest!', 'Rozkaz!', 'Zrozumiałem!', 'Według rozkazu!', 'Naprzód!'], veh:['Naprzód!', 'Jedziemy!', 'Pełny gaz!'],
+    move:['Za mną!', 'Szybciej!', 'Naprzód, chłopcy!', 'Rozproszyć się!'], atk:['Ognia!', 'Pal!', 'Za Polskę!', 'Hurra!', 'Bij Niemca!'],
+    kill:['Trafiony!', 'Płonie!', 'Mamy go!', 'Załatwiony!'], hurt:['Sanitariusz!', 'Kryj się!', 'Jestem ranny!', 'Padnij!'],
+    cap:['Zajęte!', 'Nasze!'], new:['Melduję się!', 'Gotowi!'],
+    idle:['Masz ognia?', 'Jeszcze Polska nie zginęła…', 'Kiedy do domu?', 'Zimno jak diabli.']},
+  it:{sel:['Signorsì!', 'Agli ordini!', 'Comandi!', 'Subito!', 'Avanti!'], veh:['Avanti!', 'In marcia!', 'Motore!', 'Avanti tutta!'],
+    move:['Seguitemi!', 'Avanti, ragazzi!', 'Più veloci!', 'Sparpagliatevi!'], atk:['Fuoco!', 'Tirate!', 'Avanti, Savoia!', 'Fuoco a volontà!'],
+    kill:['Colpito!', 'Distrutto!', 'Preso!', 'Brucia!'], hurt:['Barelliere!', 'Al riparo!', 'Ritirata!', 'Sono ferito!', 'Mamma mia!'],
+    cap:['Preso!', 'È nostro!'], new:['Presente!', 'Pronti!'],
+    idle:['Hai da accendere?', 'Che caldo…', 'Ancora scatolette…', 'Quando si torna a casa?', 'Un caffè, magari…']},
+  jp:{sel:['はい！', '了解！', '分かりました！', 'はっ！', '承知！'], veh:['前進！', '発進！', '戦車前へ！', 'はい！'],
+    move:['前へ！', '続け！', '急げ！', '散開！'], atk:['撃て！', '突撃！', '万歳！', '撃ち方始め！', 'かかれ！'],
+    kill:['撃破！', 'やった！', '命中！', '仕留めた！'], hurt:['衛生兵！', '伏せろ！', 'やられた！', '退け！'],
+    cap:['占領！', '確保！', '万歳！'], new:['到着しました！', '準備よし！'],
+    idle:['故郷が恋しい…', '腹が減った…', '煙草あるか？', '暑いな…', '雨か…']},
+  cn:{sel:['是！', '明白！', '遵命！', '收到！'], veh:['前進！', '出發！', '是！'],
+    move:['跟我來！', '快！', '前進！', '散開！'], atk:['開火！', '殺！', '衝啊！', '打！'],
+    kill:['打中了！', '好！', '幹掉了！', '命中！'], hurt:['衛生兵！', '臥倒！', '我中彈了！', '隱蔽！'],
+    cap:['佔領了！', '拿下了！'], new:['報到！', '準備好了！'],
+    idle:['有火嗎？', '想家了…', '餓了…', '敵人在哪？', '這雨下個不停…']},
+};
+// variants: Marines call for a corpsman, the Belgians speak Flemish as well as French, the desert armies talk about sand
+BARK_LINES.usp = {...BARK_LINES.us, hurt:['Corpsman!', 'Corpsman up!', 'Get down!', 'I\'m hit!'], idle:BARK_LINES.us.idle.concat(['Semper fi, Mac.', 'Another damn island…'])};
+BARK_LINES.be = {...BARK_LINES.fr, sel:BARK_LINES.fr.sel.concat(['Ja, commandant!', 'Begrepen!']), atk:BARK_LINES.fr.atk.concat(['Vuur!', 'Schiet!']), move:BARK_LINES.fr.move.concat(['Vooruit!', 'Volg mij!'])};
+BARK_LINES.fr40 = BARK_LINES.fr; BARK_LINES.ffl = BARK_LINES.fr;
+BARK_LINES.dak = {...BARK_LINES.ger, idle:['Sand… überall Sand.', 'Wasser!', 'Für ein kühles Bier…', 'Diese Fliegen!', 'Hat einer Feuer?']};
+BARK_LINES.uk42 = {...BARK_LINES.uk, idle:['Flies, flies, flies…', 'Bloody sand.', 'Brew up, lads?', 'Fancy a swim at Alex?', 'Bully beef again…']};
+for (const [k, v] of Object.entries(BARK_LINES)) BARKS[k] = {...(BARKS[k] || {}), ...v};
+for (const k of ['ger40']) BARKS[k] = BARKS.ger;
+for (const k of ['uk40']) BARKS[k] = BARKS.uk;
+for (const k of ['su41']) BARKS[k] = BARKS.su;
+if (BARKS.zed) Object.assign(BARKS.zed, {move:['Hhhrrr…', 'Uuunnh…'], cap:['Hhhrrr…'], new:['Uuurgh…'], idle:['Hhhnnn…', 'Grrr…', 'Uuurrh…']});
+
+/* idle talk: now and then, between the shooting, somebody on the map says something */
+const CHATTER = {next:0};
+function chatterTick() {
+  const now = performance.now();
+  if (now < CHATTER.next || FAST || !SET.fx || !G || G.over || document.body.dataset.screen !== 'game') return;
+  CHATTER.next = now + 6000 + Math.random() * 9000;
+  if (!$('#dialog').hidden || (typeof UI !== 'undefined' && UI.mode !== 'idle') || !$('#battlewrap').hidden) return;
+  const pool = G.units.filter(u => u.d.foot && seen(u) && onScreen(u));
+  if (pool.length) fxBark(pool[Math.random() * pool.length | 0], 'idle', {quiet:true});
+}
+const onScreen = u => { const [x, y] = T2W(u.x, u.y), sx = (x - cam.x) * cam.z, sy = (y - cam.y) * cam.z; return sx > 40 && sy > 60 && sx < innerWidth - 40 && sy < innerHeight - 140; };
+setInterval(chatterTick, 1000);
+
 /* ============================== SERVICE RECORD ============================
    Lifetime statistics and medals, kept with campaign progress. Medals are
    period decorations awarded for feats across every mode. */
@@ -7976,11 +8527,15 @@ function say(coId, text) {
   if (FAST) return Promise.resolve();
   return new Promise(res => {
     const d = $('#dialog'); d.querySelector('.pt').replaceChildren(portraitCanvas(coId, 1)); d.querySelector('.who').textContent = CO[coId].rank + ' ' + CO[coId].n;
-    d.querySelector('.txt').textContent = text; d.hidden = false;
-    const close = () => { d.hidden = true; d.removeEventListener('click', close); removeEventListener('keydown', key); res(); };
+    const txt = d.querySelector('.txt'); txt.textContent = ''; d.hidden = false;
+    // he speaks: the line types out in time with his mumbling voice; a click finishes the line, a second click closes it
+    const v = babble(coId, text, {zed:CO[coId].nat === 'zed'}), ms = Math.max(400, Math.min(v ? v.dur * 1000 : 0, text.length * 45) || text.length * 18), t0 = performance.now();
+    let full = false; const tick = setInterval(() => { const n = Math.ceil(text.length * Math.min(1, (performance.now() - t0) / ms)); txt.textContent = text.slice(0, n); if (n >= text.length) { full = true; clearInterval(tick); } }, 30);
+    const finish = () => { clearInterval(tick); txt.textContent = text; full = true; if (v) v.stop(); };
+    const close = () => { if (!full) return finish(); finish(); d.hidden = true; d.removeEventListener('click', close); removeEventListener('keydown', key); res(); };
     const key = e => { if (['Enter', ' ', 'z', 'Z', 'Escape'].includes(e.key)) close(); };
     d.addEventListener('click', close); addEventListener('keydown', key);
-    if (G && (G.watch || (G.teams[1].ai && G.teams[2].ai))) setTimeout(() => { if (!d.hidden) close(); }, 2600 + text.length * 25);   // spectators are not asked to click
+    if (G && (G.watch || (G.teams[1].ai && G.teams[2].ai))) setTimeout(() => { if (!d.hidden) { finish(); close(); } }, 2600 + text.length * 25);   // spectators are not asked to click
   });
 }
 
@@ -7998,6 +8553,7 @@ async function animateMove(u, path) {
     if (u.d.sea || ['sea', 'river'].includes(terr(bx, by))) part({kind:'ring', x:wx, y:wy + 14, size:6, grow:20, life:600, col:'230,240,245'});
   }
   const [x, y] = path[path.length - 1]; u.x = x; u.y = y; delete u.rx; delete u.ry; u.moving = false;
+  if (path.length > 2 && Math.random() < .3) fxBark(u, 'move');                    // a word as they arrive
 }
 async function afterMove(u) {
   const m = mineCheck(u);
@@ -8013,11 +8569,10 @@ async function doAttack(u, t) {
   if (!FAST && !SET.battle) fxBark(u, 'atk');
   const res = attack(u, t);
   if (!FAST) {
-    if (SET.battle) { await battleScene(u, t, res, preA, preD); fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty}, res.killed); }
-    else { sfx(u.d.snd); await fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty}, res.killed); }
+    if (SET.battle) { await battleScene(u, t, res, preA, preD); fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty}, res.killed, {quiet:true}); }
+    else { const dk = res.killed && deathKind(t.d); await fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty, dk}, res.killed); if (res.killed) killSound(t.d, .05, dk); }
     fxText(tx, ty, '-' + (Math.ceil(preD / 10) - Math.max(0, Math.ceil(t.hp / 10))));
-    if (res.counter) { if (!SET.battle) { sfx(t.d.snd, .2); await fxAttackMap({...t, x:tx, y:ty}, {...u, x:ux, y:uy}, res.cKilled); } fxText(ux, uy, '-' + (Math.ceil(preA / 10) - Math.max(0, Math.ceil(u.hp / 10)))); }
-    if (res.killed || res.cKilled) sfx('boom', .3);
+    if (res.counter) { if (!SET.battle) { const dk = res.cKilled && deathKind(u.d); await sleep(200); await fxAttackMap({...t, x:tx, y:ty}, {...u, x:ux, y:uy, dk}, res.cKilled); if (res.cKilled) killSound(u.d, .05, dk); } fxText(ux, uy, '-' + (Math.ceil(preA / 10) - Math.max(0, Math.ceil(u.hp / 10)))); }
     if (res.killed && G.units.includes(u)) fxBark(u, 'kill');
     else if (G.units.includes(t) && t.hp <= 40) fxBark(t, 'hurt');
     else if (G.units.includes(u) && u.hp <= 30) fxBark(u, 'hurt');
@@ -8027,7 +8582,7 @@ async function doAttack(u, t) {
   return res;
 }
 async function doCapture(u) {
-  const r = capture(u); sfx('capture');
+  const r = capture(u); sfx('capture'); if (Math.random() < .7) fxBark(u, 'cap');
   fxText(u.x, u.y, r.done ? 'Captured!' : `${propAt(u.x, u.y).cap}/20`, '#f0d060');
   if (r.done) await sleep(400);
   return r;
@@ -8308,7 +8863,7 @@ function openBuild(p) {
   const roles = buildable(G.turn, kind);
   const items = roles.map(r => { const d = udef(T.nat, r), c = unitCost(G.turn, r);
     return {html:`<span class="bi"></span><span class="bn">${d.n}<small>${d.w} · move ${d.mv}${d.rng[1] ? ' · range ' + (d.rng[0] === d.rng[1] ? d.rng[0] : d.rng[0] + '–' + d.rng[1]) : ''}</small></span><span class="bc">${fmt(c)}</span>`, disabled:c > T.funds, role:r,
-      fn:() => { T.funds -= c; const u = spawn(G.turn, {role:r, x:p.x, y:p.y, hp:100}); u.done = true; u.moved = true; sfx('build'); closeMenu(); UI.mode = 'idle'; fx('smoke', p.x, p.y); hud(); }}; });
+      fn:() => { T.funds -= c; const u = spawn(G.turn, {role:r, x:p.x, y:p.y, hp:100}); u.done = true; u.moved = true; sfx('build'); closeMenu(); UI.mode = 'idle'; fx('smoke', p.x, p.y); hud(); if (Math.random() < .6) setTimeout(() => fxBark(u, 'new'), 500); }}; });
   items.push({label:'Close', fn:() => { closeMenu(); UI.mode = 'idle'; }});
   menuAt(items, p.x, p.y);
   const m = $('#menu'); m.classList.add('build');
@@ -8566,21 +9121,26 @@ function applySettings() {
 }
 function openCredits() {
   $('#credlist').innerHTML = '<h4>Music</h4>' + MUSIC.tracks.map(m => `<p><b>${m.title}</b><br>${m.by} · ${m.lic}</p>`).join('') +
-    '<h4>Recorded sound</h4>' + SFX_CREDITS.map(([a, b, c]) => `<p><b>${a}</b><br>${b} · ${c}</p>`).join('') +
-    '<p>All recordings from Wikimedia Commons. CC BY / CC BY-SA works are used under those licences; "Duet Musette" by Kevin MacLeod (incompetech.com), licensed under Creative Commons: By Attribution 3.0.</p>' +
+    '<h4>Recorded sound</h4>' + SFX_CREDITS.concat(typeof SFX_LIB_CREDITS !== 'undefined' ? SFX_LIB_CREDITS : []).map(([a, b, c]) => `<p><b>${a}</b><br>${b} · ${c}</p>`).join('') +
+    '<p>Music and the first three sounds from Wikimedia Commons; the rest of the sound library from Freesound.org. CC BY / CC BY-SA works are used under those licences; "Duet Musette" by Kevin MacLeod (incompetech.com), licensed under Creative Commons: By Attribution 3.0.</p>' +
     '<h4>History</h4><p>Unit designations, generals and dates follow the 1943–45 campaigns in Western Europe and on the Eastern Front. German flags can be switched to the Balkenkreuz in Settings.</p>';
   show('credits');
 }
 
 /* the Armoury: every army's equipment with its numbers and history */
 function openArmoury(nat) { openArchive('arms', nat); }
+/* the armoury tabs: several armies share a country, so each is named for its period or theatre */
+const ARMY_LABEL = {ger:'Germany 1943–45', ger40:'Germany 1939–43 & at sea', dak:'Afrika Korps 1941–43', us:'US Army, Europe 1943–45', usp:'US forces, Pacific 1941–45', uk:'Britain 1944–45', uk40:'Britain 1939–43, Malaya & at sea',
+  uk42:'Britain, Desert 1941–43', su:'Soviet Union 1943–45', su41:'Soviet Union 1941–42', fr:'Free France 1944', ffl:'Free French, Desert 1942', fr40:'France 1940', be:'Belgium 1940',
+  pl:'Poland 1939', jp:'Japan 1937–45', cn:'China 1937–45', it:'Italy 1940–43', zed:'The Dead'};
 /* the Archive: armoury, generals, battles and glossary */
 function openArchive(tab = 'arms', nat = 'ger') {
   document.querySelectorAll('#arctabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
   const tabs = $('#armtabs'), list = $('#armlist'); tabs.innerHTML = ''; list.innerHTML = ''; tabs.hidden = tab !== 'arms';
   list.className = tab;
   if (tab === 'arms') {
-    for (const [k, n] of Object.entries(NATION)) { const b = document.createElement('button'); b.className = k === nat ? 'on' : ''; b.append(flagCanvas(k, 24, 16), document.createTextNode(' ' + n.n)); b.onclick = () => { sfx('click'); openArchive('arms', k); }; tabs.append(b); }
+    for (const [k, n] of Object.entries(NATION)) { const b = document.createElement('button'); b.className = k === nat ? 'on' : ''; b.append(flagCanvas(k, 24, 16), document.createTextNode(' ' + (ARMY_LABEL[k] || n.n))); b.onclick = () => { sfx('click'); openArchive('arms', k); }; tabs.append(b); }
+    const note = document.createElement('p'); note.className = 'armnote'; note.textContent = 'Each army is shown as it was equipped at the time, so a country can appear more than once: Germany in 1939–43, in the desert and in 1943–45 fielded very different tanks.'; list.append(note);
     for (const r of ROLE_ORDER) {
       const d = udef(nat, r); if (!d) continue;
       const card = document.createElement('div'); card.className = 'armcard';

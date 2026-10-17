@@ -3,7 +3,7 @@
 #   dist/index.html       -> a standalone copy with a doctype, for playing offline
 # Test in the browser:  iron-front.html#validate   and   iron-front.html#autoplay
 $src = Join-Path $PSScriptRoot 'src'
-$order = 'data.js','maps.js','engine.js','art.js','audio.js','music.js','fx.js','battle.js','intel.js','history.js','theatres.js','theatres-art.js','missions2.js','history2.js','modes.js','desert.js','zombies.js','medals.js','editor.js','ai.js','ui.js','difficulty.js','net.js','pad.js','test.js'
+$order = 'data.js','maps.js','engine.js','art.js','audio.js','music.js','sfx-credits.js','fx.js','battle.js','intel.js','history.js','theatres.js','theatres-art.js','missions2.js','history2.js','modes.js','desert.js','zombies.js','barks.js','medals.js','editor.js','ai.js','ui.js','difficulty.js','net.js','pad.js','test.js'
 $js = ($order | ForEach-Object { [IO.File]::ReadAllText((Join-Path $src $_)) }) -join "`n"
 $css = [IO.File]::ReadAllText((Join-Path $src 'style.css'))
 $shell = [IO.File]::ReadAllText((Join-Path $src 'shell.html'))

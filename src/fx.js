@@ -46,12 +46,17 @@ const BARKS = {
   su: {sel:['Есть!', 'Вперёд!', 'Так точно!'], veh:['Вперёд!', 'Полный ход!', 'Есть!'], atk:['Огонь!', 'За Родину!', 'Ура!'], kill:['Готов!', 'Горит!', 'Попал!'], hurt:['Санитар!', 'Ложись!', 'Горим!']},
   fr: {sel:['Oui, mon général!', 'En avant!', 'À vos ordres!'], veh:['En avant!', 'Roulez!'], atk:['Feu!', 'Tirez!', 'Pour la France!'], kill:['Touché!', 'Détruit!', 'Bien joué!'], hurt:['Infirmier!', 'À couvert!', 'Repli!']},
 };
-function fxBark(u, kind) {
+function barkText(nat, kind, foot) {
+  const B = BARKS[nat] || BARKS[natBase(nat)] || BARKS.us, list = (kind === 'sel' || kind === 'move' || kind === 'atk' && !B.atk) && !foot && B.veh ? B.veh : B[kind] || B.sel;
+  return list ? list[Math.floor(Math.random() * list.length)] : null;
+}
+function fxBark(u, kind, o = {}) {
   if (FAST || !SET.fx || !u || !G.teams[u.team]) return;
-  const nat = G.teams[u.team].nat, B = BARKS[nat] || BARKS[natBase(nat)] || BARKS.us, list = kind === 'sel' && !u.d.foot && B.veh ? B.veh : B[kind]; if (!list) return;
+  const nat = G.teams[u.team].nat, B = BARKS[nat] || BARKS[natBase(nat)] || BARKS.us, list = (kind === 'sel' || kind === 'move') && !u.d.foot && B.veh ? B.veh : B[kind] || B.sel; if (!list) return;
   if (!seen(u)) return;
   FX.parts = FX.parts.filter(p => !(p.kind === 'bark' && p.uid === u.id));
-  const [x, y] = T2W(u.x, u.y); part({kind:'bark', uid:u.id, x, y:y - 40, vx:0, vy:-4, text:list[Math.floor(Math.random() * list.length)], life:1500, flip:u.team === 2});
+  const [x, y] = T2W(u.x, u.y), text = list[Math.floor(Math.random() * list.length)]; part({kind:'bark', uid:u.id, x, y:y - 40, vx:0, vy:-4, text, life:1500, flip:u.team === 2});
+  if (Math.random() < .75) babble(nat + (u.id % 6), text, {gain:o.quiet ? .25 : .5, max:1.3, quick:true, zed:nat === 'zed', pitch:u.d.foot ? 1.05 : .95});   // the man himself, mumbling it
 }
 function fxMuzzle(wx, wy, dir = 1, size = 1) {
   part({kind:'flash', x:wx, y:wy, size:9 * size, life:110, dir}); lightAt(wx, wy, 60 * size, '255,220,150', 160);
@@ -106,29 +111,46 @@ function fxClass(d) {
   if (d.role === 'dd') return 'naval';
   return 'cannon';
 }
-async function fxAttackMap(u, t, killed) {
+/* the attack on the map, with its sound tied to the picture: the report with the muzzle flash, the whistle in flight, the bang on impact.
+   o.quiet: the battle scene has already played the sound of this attack */
+async function fxAttackMap(u, t, killed, o = {}) {
   if (FAST || !SET.fx) return;
   const k = fxClass(u.d), [ax, ay] = T2W(u.x, u.y), dir = t.x >= u.x ? 1 : -1, big = u.role === 'htank' || u.role === 'pak' ? 1.4 : u.role === 'tank' || u.role === 'mtank' ? 1.1 : .8;
+  const S = !o.quiet, snd = u.d.snd, armour = t.d.mt === 'tread' || t.d.sea;
+  const fire = () => { if (S) shot(snd); }, bang = (s, n = 0) => { if (S && n < 4) boomAt(s, {gain:n ? .6 : 1}); }, whistleFor = (ms, at = 100) => { if (S) setTimeout(() => incomingTo((ms - at) / 1000), at); }, clang = () => { if (S && armour) sfxNow('clang'); };
   switch (k) {
-    case 'smallarms': fxMuzzle(ax + dir * 14, ay - 8, dir, .5); fxTracers(u, t, u.role === 'nest' || u.d.snd === 'mg42' ? 12 : 7); await sleep(500); break;
-    case 'flamer': for (let i = 0; i < 16; i++) setTimeout(() => { const [bx, by] = T2W(t.x, t.y); part({kind:'fire', x:ax + dir * 10, y:ay - 6, vx:(bx - ax) * rnd(1.6, 2.2), vy:(by - ay) * 2 - 20, size:rnd(5, 9), life:450}); }, i * 30); await sleep(500); fxFire(...T2W(t.x, t.y), 14, 10); break;
-    case 'charge': await fxProjectile(u, t, 'arc', 450); fxExplosion(t.x, t.y, .8); break;
-    case 'rocketAT': fxSmoke(ax - dir * 14, ay - 8, 4, .25, 10, 8); await fxProjectile(u, t, 'rocket', 300); fxExplosion(t.x, t.y, .7); break;
-    case 'atrifle': fxMuzzle(ax + dir * 16, ay - 8, dir, .8); await fxProjectile(u, t, 'tracer', 120); fxSparks(...T2W(t.x, t.y), 10); break;
-    case 'cannon': fxMuzzle(ax + dir * 20, ay - 10, dir, big); fxDust(ax, ay + 10, 4); shakeCam(2 * big); await fxProjectile(u, t, 'tracer', 140); fxExplosion(t.x, t.y, big * .8, {crater:false}); break;
-    case 'artillery': fxMuzzle(ax + dir * 16, ay - 14, dir, 1.3); fxSmoke(ax, ay - 10, 6, .4, 14, 24); shakeCam(3); await fxProjectile(u, t, 'arc', 650); fxExplosion(t.x, t.y, 1.2); break;
-    case 'mortar': fxMuzzle(ax + dir * 6, ay - 14, dir, .6); await fxProjectile(u, t, 'arc', 700); fxExplosion(t.x, t.y, .7); break;
-    case 'salvo': for (let i = 0; i < 6; i++) setTimeout(() => { fxSmoke(ax, ay - 8, 2, .4, 10, 18); fxProjectile(u, {x:t.x + rnd(-.6, .6), y:t.y + rnd(-.6, .6)}, 'rocketArc', 700).then(() => fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-20, 20), wy:T2W(t.x, t.y)[1] + rnd(-14, 14)})); }, i * 110); await sleep(1300); break;
-    case 'flak': for (let i = 0; i < 6; i++) setTimeout(() => { fxMuzzle(ax + dir * 10, ay - 12, dir, .5); const [bx, by] = T2W(t.x, t.y); part({kind:'puff', x:bx + rnd(-16, 16), y:by - 20 + rnd(-12, 12), size:6, grow:14, life:900}); }, i * 90); fxTracers(u, t, 8, '255,200,120', 14); await sleep(650); break;
-    case 'strafe': fxTracers(u, t, 14, '255,230,140', 22, 500); await sleep(550); break;
-    case 'dive': case 'bombs': await fxProjectile({x:u.x, y:u.y - .4}, t, 'bomb', 420); fxExplosion(t.x, t.y, 1.5); break;
-    case 'rockets': for (let i = 0; i < 4; i++) setTimeout(() => fxProjectile(u, {x:t.x + rnd(-.4, .4), y:t.y + rnd(-.4, .4)}, 'rocket', 260).then(() => fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-16, 16), wy:T2W(t.x, t.y)[1] + rnd(-10, 10)})), i * 90); await sleep(700); break;
-    case 'maul': { const [bx, by] = T2W(t.x, t.y); for (let i = 0; i < 3; i++) setTimeout(() => { fxBlood(bx + rnd(-8, 8), by + rnd(-6, 6), 5); shakeCam(1.5); }, i * 140); await sleep(520); break; }
-    case 'bile': { await fxProjectile(u, t, 'arc', 650); const [bx, by] = T2W(t.x, t.y); fxDust(bx, by, 14, '130,180,60'); fxSmoke(bx, by - 6, 4, .2, 8, 14); break; }
-    case 'naval': fxMuzzle(ax + dir * 20, ay - 12, dir, 1.6); fxSmoke(ax, ay - 12, 8, .5, 16, 26); shakeCam(4); await fxProjectile(u, t, 'arc', 750); fxExplosion(t.x, t.y, 1.5); break;
+    case 'smallarms': fire(); fxMuzzle(ax + dir * 14, ay - 8, dir, .5); fxTracers(u, t, u.role === 'nest' || snd === 'mg42' ? 12 : 7); if (S) impactSound(u.d, t.d, .15); await sleep(500); break;
+    case 'flamer': fire(); for (let i = 0; i < 16; i++) setTimeout(() => { const [bx, by] = T2W(t.x, t.y); part({kind:'fire', x:ax + dir * 10, y:ay - 6, vx:(bx - ax) * rnd(1.6, 2.2), vy:(by - ay) * 2 - 20, size:rnd(5, 9), life:450}); }, i * 30); await sleep(500); fxFire(...T2W(t.x, t.y), 14, 10); break;
+    case 'charge': await fxProjectile(u, t, 'arc', 450); fxExplosion(t.x, t.y, .8); bang(.8); break;
+    case 'rocketAT': fire(); fxSmoke(ax - dir * 14, ay - 8, 4, .25, 10, 8); await fxProjectile(u, t, 'rocket', 300); fxExplosion(t.x, t.y, .7); bang(.7); clang(); break;
+    case 'atrifle': fire(); fxMuzzle(ax + dir * 16, ay - 8, dir, .8); await fxProjectile(u, t, 'tracer', 120); fxSparks(...T2W(t.x, t.y), 10); clang(); break;
+    case 'cannon': fire(); fxMuzzle(ax + dir * 20, ay - 10, dir, big); fxDust(ax, ay + 10, 4); shakeCam(2 * big); await fxProjectile(u, t, 'tracer', 140); fxExplosion(t.x, t.y, big * .8, {crater:false}); bang(.6 * big); clang(); break;
+    case 'artillery': fire(); fxMuzzle(ax + dir * 16, ay - 14, dir, 1.3); fxSmoke(ax, ay - 10, 6, .4, 14, 24); shakeCam(3); whistleFor(650); await fxProjectile(u, t, 'arc', 650); fxExplosion(t.x, t.y, 1.2); bang(1.2); break;
+    case 'mortar': fire(); fxMuzzle(ax + dir * 6, ay - 14, dir, .6); whistleFor(700, 200); await fxProjectile(u, t, 'arc', 700); fxExplosion(t.x, t.y, .7); bang(.8); break;
+    case 'salvo': for (let i = 0; i < 6; i++) setTimeout(() => { if (S && i < 4) launch({gain:.8}); fxSmoke(ax, ay - 8, 2, .4, 10, 18); fxProjectile(u, {x:t.x + rnd(-.6, .6), y:t.y + rnd(-.6, .6)}, 'rocketArc', 700).then(() => { fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-20, 20), wy:T2W(t.x, t.y)[1] + rnd(-14, 14)}); bang(.8, i); }); }, i * 110); await sleep(1300); break;
+    case 'flak': fire(); for (let i = 0; i < 6; i++) setTimeout(() => { fxMuzzle(ax + dir * 10, ay - 12, dir, .5); const [bx, by] = T2W(t.x, t.y); part({kind:'puff', x:bx + rnd(-16, 16), y:by - 20 + rnd(-12, 12), size:6, grow:14, life:900}); }, i * 90); fxTracers(u, t, 8, '255,200,120', 14); await sleep(650); break;
+    case 'strafe': fire(); fxTracers(u, t, 14, '255,230,140', 22, 500); if (S) impactSound(u.d, t.d, .3); await sleep(550); break;
+    case 'dive': case 'bombs': fire(); whistleFor(420, 0); await fxProjectile({x:u.x, y:u.y - .4}, t, 'bomb', 420); fxExplosion(t.x, t.y, 1.5); bang(1.5); break;
+    case 'rockets': for (let i = 0; i < 4; i++) setTimeout(() => { if (S) launch({gain:.8}); fxProjectile(u, {x:t.x + rnd(-.4, .4), y:t.y + rnd(-.4, .4)}, 'rocket', 260).then(() => { fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-16, 16), wy:T2W(t.x, t.y)[1] + rnd(-10, 10)}); bang(.8, i); }); }, i * 90); await sleep(700); break;
+    case 'maul': { if (S) sfx(snd); const [bx, by] = T2W(t.x, t.y); for (let i = 0; i < 3; i++) setTimeout(() => { fxBlood(bx + rnd(-8, 8), by + rnd(-6, 6), 5); shakeCam(1.5); }, i * 140); await sleep(520); break; }
+    case 'bile': { if (S) sfx(snd); await fxProjectile(u, t, 'arc', 650); const [bx, by] = T2W(t.x, t.y); fxDust(bx, by, 14, '130,180,60'); fxSmoke(bx, by - 6, 4, .2, 8, 14); break; }
+    case 'naval': fire(); fxMuzzle(ax + dir * 20, ay - 12, dir, 1.6); fxSmoke(ax, ay - 12, 8, .5, 16, 26); shakeCam(4); whistleFor(750); await fxProjectile(u, t, 'arc', 750); fxExplosion(t.x, t.y, 1.5); bang(1.5); break;
   }
-  if (t.d.foot) { const [bx, by] = T2W(t.x, t.y); fxBlood(bx, by, killed ? 14 : 7); if (goreLevel() || t.d.nat === 'zed') sfx(t.d.nat === 'zed' ? (killed ? 'zdie' : 'zhurt') : killed ? 'scream' : 'cry', .1); }
-  if (killed) { await sleep(120); fxExplosion(t.x, t.y, t.d.foot ? .5 : 1.4, {crater:!t.d.foot}); if (t.d.foot) stampFallen(t.x, t.y, t.d.nat, 2 + (Math.random() * 2 | 0)); else if (!t.d.air && !t.d.sea) stampFallen(t.x, t.y, t.d.nat, Math.random() < .5 ? 1 : 0); }
+  if (t.d.foot) { const [bx, by] = T2W(t.x, t.y); fxBlood(bx, by, killed ? 14 : 7); if (S && (goreLevel() || t.d.nat === 'zed')) sfx(t.d.nat === 'zed' ? (killed ? 'zdie' : 'zhurt') : killed ? 'scream' : 'cry', .1); }
+  if (killed) { await sleep(120);
+    const [wx, wy] = T2W(t.x, t.y);
+    if (t.dk === 'cookoff') {                           // the ammunition goes up: the turret lifts off, then the rounds cook off for seconds
+      fxExplosion(t.x, t.y, 1.8, {crater:true}); part({kind:'chunk', x:wx, y:wy - 10, vx:rnd(-50, 50), vy:-rnd(220, 300), g:520, floor:wy + rnd(8, 22), spin:rnd(-9, 9), w:14, h:9, life:2600});
+      for (let i = 0; i < 7; i++) setTimeout(() => { fxSparks(wx + rnd(-8, 8), wy - 6, 8); fxFire(wx, wy - 8, 6, 9); if (Math.random() < .4) fxExplosion(t.x, t.y, .45, {crater:false, wx:wx + rnd(-10, 10), wy:wy + rnd(-8, 4)}); }, 350 + i * 330);
+      for (let i = 0; i < 10; i++) setTimeout(() => part({kind:'fire', x:wx + rnd(-3, 3), y:wy - 12, vx:rnd(-6, 6), vy:-rnd(90, 160), size:rnd(6, 10), life:600}), 200 + i * 90);   // a jet of flame from the open turret ring
+    } else if (t.dk === 'brewup') {                      // burns where it stands, black smoke climbing
+      fxExplosion(t.x, t.y, 1.2, {crater:false});
+      for (let i = 0; i < 10; i++) setTimeout(() => { fxFire(wx + rnd(-6, 6), wy - 6, 5, 9); fxSmoke(wx, wy - 14, 2, .9, 11, 44); }, 150 + i * 200);
+    } else if (t.dk === 'knockout') {                    // the shot goes in, a flash and a puff from the hatches, the crew are out
+      fxExplosion(t.x, t.y, .7, {crater:false}); fxSparks(wx, wy - 4, 14);
+      for (let i = 0; i < 6; i++) setTimeout(() => fxSmoke(wx + rnd(-4, 4), wy - 12, 1, .6, 7, 30), 300 + i * 260);
+    } else fxExplosion(t.x, t.y, t.d.foot ? .5 : 1.4, {crater:!t.d.foot});
+    if (t.d.foot) stampFallen(t.x, t.y, t.d.nat, 2 + (Math.random() * 2 | 0)); else if (!t.d.air && !t.d.sea) stampFallen(t.x, t.y, t.d.nat, Math.random() < .5 ? 1 : 0); }
 }
 
 /* ---------- drawing (world space) ---------- */
@@ -163,6 +185,10 @@ function fxDraw(ctx, now) {
       case 'spark': ctx.fillStyle = `rgba(255,${Math.round(230 - 100 * k)},120,${1 - k})`; ctx.fillRect(p.x, p.y, 2, 2); break;
       case 'blood': ctx.fillStyle = `rgba(${120 - 40 * k | 0},10,8,${1 - k * .4})`; ctx.fillRect(p.x, p.y, p.size, p.size); if (k > .9 && Math.random() < .3 && terrainCanvas) { const tg = terrainCanvas.getContext('2d'); tg.fillStyle = 'rgba(70,10,6,.5)'; tg.fillRect(p.x, p.y, p.size + 1, p.size); } break;
       case 'debris': ctx.fillStyle = p.col; ctx.globalAlpha = 1 - k; ctx.fillRect(p.x, p.y, p.size, p.size); ctx.globalAlpha = 1; break;
+      case 'chunk': {                                   // a turret thrown clear by an ammunition fire, trailing smoke, tumbling, coming to rest
+        if (p.y > p.floor) { p.y = p.floor; p.vy *= -.25; p.vx *= .5; p.spin *= .4; }
+        p.rot = (p.rot || 0) + p.spin * dt; if (Math.random() < .5 && k < .7) part({kind:'smoke', x:p.x, y:p.y, vx:0, vy:-8, size:3, grow:12, life:900, shade:.85});
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = Math.min(1, (1 - k) * 4); ctx.fillStyle = '#2a2622'; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.fillRect(p.w / 2 - 1, -1.5, p.w * .9, 3); ctx.restore(); break; }
       case 'water': ctx.fillStyle = `rgba(230,240,248,${1 - k})`; ctx.fillRect(p.x, p.y, p.size, p.size); break;
       case 'ring': ctx.strokeStyle = `rgba(${p.col},${(1 - k) * .6})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(p.x, p.y, p.size + p.grow * k, (p.size + p.grow * k) * .45, 0, 0, 7); ctx.stroke(); break;
       case 'tracer': { ctx.globalCompositeOperation = 'lighter'; const x = p.ax + (p.bx - p.ax) * k, y = p.ay + (p.by - p.ay) * k, x2 = p.ax + (p.bx - p.ax) * Math.max(0, k - .25), y2 = p.ay + (p.by - p.ay) * Math.max(0, k - .25);
