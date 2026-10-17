@@ -153,6 +153,15 @@ async function fxAttackMap(u, t, killed, o = {}) {
     if (t.d.foot) stampFallen(t.x, t.y, t.d.nat, 2 + (Math.random() * 2 | 0)); else if (!t.d.air && !t.d.sea) stampFallen(t.x, t.y, t.d.nat, Math.random() < .5 ? 1 : 0); }
 }
 
+/* smoke drifting over a burning sector (G.smoke): grey banks rolling inland on the wind */
+setInterval(() => {
+  if (FAST || !SET.fx || typeof G === 'undefined' || !G || !G.smoke || document.body.dataset.screen !== 'game') return;
+  for (const s of G.smoke) if (G.day <= s.until) for (let i = 0; i < 3; i++) {
+    const x = s.x0 + Math.random() * (s.x1 - s.x0 + 1), y = s.y0 + Math.random() * (s.y1 - s.y0 + 1);
+    part({kind:'smoke', x:x * ART, y:y * ART, vx:rnd(4, 14), vy:-rnd(4, 12), size:rnd(16, 26), grow:rnd(24, 40), life:rnd(2600, 4200), shade:.25});
+  }
+}, 300);
+
 /* ---------- drawing (world space) ---------- */
 /* burning wrecks: drawn UNDER the units, squashed flat and scorched, and almost invisible when a live unit stands on the tile */
 function fxWrecks(ctx) {

@@ -90,20 +90,25 @@ function finish(c, {camo = null, base = null, outline = '#13110d', light = 1, ve
   const src = new Uint8ClampedArray(d);
   const SA = (x, y) => x < 0 || y < 0 || x >= W || y >= H ? 0 : src[(y * W + x) * 4 + 3];
   const SL = (x, y) => { const i = (y * W + x) * 4; return src[i] * .3 + src[i + 1] * .59 + src[i + 2] * .11; };
-  const bev = [.26, .15, .06], sh = [-.3, -.17, -.07];
+  const bev = [.26, .15, .06], sh = [-.3, -.17, -.07], q = Math.max(1, Math.round(S / 2)), fine = S >= 4;   // q: one map pixel, in this canvas's pixels (2 for the battle models)
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; if (!src[i + 3]) continue;
     let k = (.1 - .24 * (y - top) / span) * light;
-    for (let s = 1; s <= 3; s++) if (!SA(x - s, y - s) || !SA(x, y - s)) { k += bev[s - 1] * light; break; }
-    for (let s = 1; s <= 3; s++) if (!SA(x + s, y + s) || !SA(x, y + s)) { k += sh[s - 1] * light; break; }
+    for (let s = 1; s <= 3; s++) if (!SA(x - s * q, y - s * q) || !SA(x, y - s * q)) { k += bev[s - 1] * light; break; }
+    for (let s = 1; s <= 3; s++) if (!SA(x + s * q, y + s * q) || !SA(x, y + s * q)) { k += sh[s - 1] * light; break; }
     if (y > 0 && SA(x, y - 1)) { const dl = SL(x, y - 1) - SL(x, y); if (dl > 28) k -= .14; else if (dl < -28) k += .12; }
+    if (fine) {                                        // the battle models: a glint on edges that catch the light, and the grain of worn paint and cloth
+      if (!SA(x - 1, y - 1) && SA(x + 1, y + 1) && k > .15) k += .12;
+      k += (hrand(x, y, 5) - .5) * .07 + (vnoise(x / 3, y / 9, 13) - .5) * .06;
+    }
     if (k > 0) for (let j = 0; j < 3; j++) d[i + j] = d[i + j] + (255 - d[i + j]) * Math.min(.6, k);
     else for (let j = 0; j < 3; j++) d[i + j] = d[i + j] * (1 + Math.max(-.6, k));
   }
   if (outline) { const o = hexRGB(outline), done = new Uint8Array(W * H);
+    const near = (x, y, r) => { for (let s = 1; s <= r; s++) if (SA(x - s, y) || SA(x + s, y) || SA(x, y - s) || SA(x, y + s)) return true; return false; };
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; if (src[i + 3]) continue;
-      if (SA(x - 1, y) || SA(x + 1, y) || SA(x, y - 1) || SA(x, y + 1)) { d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2]; d[i + 3] = 255; done[y * W + x] = 1; } }
+      if (near(x, y, q)) { d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2]; d[i + 3] = 255; done[y * W + x] = 1; } }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; if (src[i + 3] || done[y * W + x]) continue;   // soft second ring
-      if (SA(x - 2, y) || SA(x + 2, y) || SA(x, y - 2) || SA(x, y + 2) || SA(x - 1, y - 1) || SA(x + 1, y + 1)) { d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2]; d[i + 3] = 70; } }
+      if (near(x, y, 2 * q) || SA(x - q, y - q) || SA(x + q, y + q)) { d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2]; d[i + 3] = 70; } }
   }
   g.putImageData(img, 0, 0);
   return c;
@@ -516,10 +521,12 @@ function spriteVar(u, theme) {
 /* ---------- sprite cache ---------- */
 const spriteCache = new Map();
 function unitColours(nat) { const c = NATION[nat].col; return {m:c.m, d:c.d, hi:c.hi, wheel:'#55574c'}; }
-function getSprite(nat, role, f = 0, grey = false, v = '') {
-  const key = nat + role + f + (grey ? 'g' : '') + v;
+/* hi: detail multiplier. The map draws at 1; the battle scenes draw the same models at 2, painted from the same
+   recipes on a finer grid, so edges, rivets, faces and kit come out sharper instead of blown-up pixels */
+function getSprite(nat, role, f = 0, grey = false, v = '', hi = 1) {
+  const key = nat + role + f + (grey ? 'g' : '') + v + (hi > 1 ? '@' + hi : '');
   let c = spriteCache.get(key); if (c) return c;
-  c = mkCanvas(ART, ART); const P = painter(c.getContext('2d')), C = unitColours(nat), d = udef(nat, role);
+  c = mkCanvas(ART * hi, ART * hi); const P = painter(c.getContext('2d'), SC * hi), C = unitColours(nat), d = udef(nat, role);
   if (!d) { spriteCache.set(key, c); return c; }
   const sh = d.shape, winter = v.includes('w'), figs = +(v.match(/\d/) || [3])[0], B = natBase(nat);
   DRESS.winter = winter;
@@ -548,7 +555,7 @@ function getSprite(nat, role, f = 0, grey = false, v = '') {
   const camo = nat === 'ger' && vehicle ? ['#5d6b3a', '#7a4a32'] : null;
   finish(c, {camo, base:C.m, vehicle, weather:vehicle || d.fixed, snow:winter ? (vehicle && (B === 'ger' || B === 'su' || B === 'us') ? 2 : 1) : 0});
   DRESS.winter = false;
-  if (grey) { const g = c.getContext('2d'), im = g.getImageData(0, 0, ART, ART), px = im.data;
+  if (grey) { const g = c.getContext('2d'), im = g.getImageData(0, 0, c.width, c.height), px = im.data;
     for (let i = 0; i < px.length; i += 4) { const v = (px[i] * .3 + px[i + 1] * .55 + px[i + 2] * .15) * .72; px[i] = px[i + 1] = px[i + 2] = v; } g.putImageData(im, 0, 0); }
   spriteCache.set(key, c);
   return c;
@@ -879,14 +886,97 @@ function stampCrater(px, py, s = 1, r = Math.random(), quiet) {
 
 /* ---------- general portraits (96x96, painted on a 48 grid) ---------- */
 const portraitCache = new Map();
+/* ---------- faces ----------
+   Every general gets his own face: its proportions, chin, eyes, brows, nose, mouth, ears and age are drawn from
+   his name, so no two are alike, and the famous ones are tuned towards the real man (LIKENESS). */
+const LIKENESS = {
+  rommel:{w:1.04, h:.98, chin:'round', cleft:1, nose:4.4, noseW:1.05, mouthW:5.2, lips:.9, age:.45, browA:-.15, eye:1},
+  patton:{w:.94, h:1.06, chin:'square', jaw:.96, nose:4.9, mouthW:4.8, lips:.45, age:.7, browA:-.35, eye:.9, iris:'#5a7a9a'},
+  monty:{w:.84, h:1.08, chin:'pointed', nose:5.8, hook:.7, noseW:.8, eye:.82, age:.65, browA:.15, brow:.8, iris:'#5a7a9a', mouthW:4.4, lips:.45, ear:1.15},
+  ike:{w:1.02, h:1.02, chin:'round', mouthW:6.6, lips:.9, age:.5, browA:.1, eye:.95, iris:'#4a6a8a'},
+  zhukov:{w:1.14, h:.96, chin:'square', jaw:1, heavy:1, nose:4.2, noseW:1.35, browA:-.45, brow:1.3, age:.4, eye:.85},
+  konev:{w:1.06, h:1.02, chin:'round', heavy:1, nose:4.4, noseW:1.2, browA:-.2, age:.45},
+  chuikov:{w:1.08, h:1, chin:'square', nose:4.6, noseW:1.3, brow:1.4, browA:-.3, age:.4, mouthW:6},
+  degaulle:{w:.84, h:1.16, nose:6.6, noseW:1.15, hook:.45, chin:'pointed', eye:.84, age:.35, mouthW:4.4, lips:.5, ear:1.2},
+  guderian:{w:.9, h:1.05, chin:'square', nose:5.1, browA:-.2, age:.55, eye:.9},
+  manstein:{w:.9, h:1.08, nose:5.9, hook:.85, chin:'pointed', age:.6, browA:-.25, eye:.88},
+  model:{w:1, h:1, chin:'round', nose:4.6, age:.5, browA:-.35, brow:1.1},
+  bradley:{w:.98, h:1.06, chin:'square', mouthW:6, ear:1.3, age:.5, nose:5},
+  chiang:{w:.88, h:1.1, chin:'pointed', nose:4.4, age:.6, eye:.8, cheek:1},
+  yamamoto:{w:1.06, h:1, chin:'round', nose:4.2, noseW:1.15, age:.6, eye:.8, browA:-.2},
+  kuribayashi:{w:1.02, h:1.02, chin:'round', nose:4.4, age:.5, eye:.8},
+  zervas:{w:1.12, h:1.02, nose:5.2, noseW:1.3, heavy:1, age:.5, browA:-.2, brow:1.4},
+  darby:{w:.96, h:1.04, chin:'square', jaw:.95, nose:4.6, age:.25, mouthW:5.6},
+  senger:{w:.88, h:1.1, chin:'pointed', nose:5.6, hook:.4, age:.55, eye:.86},
+  bergonzoli:{w:1, h:1, nose:4.8, age:.6},
+};
+let FACE_AT = {};                                       // where the last face put its nose and mouth, for the moustache
+function faceFeat(id, L, nat) {
+  let h = 2166136261; for (const ch of String(id)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  const r = n => { let v = Math.imul(h ^ (n * 2654435761), 1597334677) >>> 0; v ^= v >>> 15; return (v >>> 0) / 4294967296; };
+  const east = nat === 'jp' || nat === 'cn';
+  return Object.assign({
+    w:.9 + r(1) * .2, h:.95 + r(2) * .13, jaw:.74 + r(3) * .24, chin:['round', 'square', 'pointed'][r(4) * 3 | 0], cleft:r(5) < .15,
+    eye:.86 + r(6) * .24, gap:.94 + r(7) * .14, eyeY:(r(8) - .5) * .8, iris:east ? '#2a2018' : ['#3a3028', '#5a4030', '#4a6a8a', '#4a6a5a', '#2a2420', '#5a7a9a'][r(9) * 6 | 0],
+    brow:.75 + r(10) * .55, browA:(r(11) - .5) * .7, nose:3.9 + r(12) * 1.9, noseW:.85 + r(13) * .4, hook:(r(14) - .45) * .9,
+    mouthW:4.6 + r(15) * 1.8, lips:.5 + r(16) * .5, ear:.9 + r(17) * .3, age:.25 + r(18) * .5, heavy:r(19) < .18, cheek:r(20) < .3, stubble:r(21) < .12,
+  }, LIKENESS[id] || {}, L.feat || {});
+}
+function drawFace(P, id, L, nat) {
+  const F = faceFeat(id, L, nat), skin = L.face, skinD = shade(skin, -.18), skinDD = shade(skin, -.3), skinL = shade(skin, .12), line = shade(skin, -.24);
+  const fw = 9 * F.w, fh = 11 * F.h, cy = 22, top = cy - fh, chinY = cy + fh * (F.chin === 'pointed' ? 1.04 : .96);
+  P.R(19.5, 28, 9, 7, skinD); P.R(19.5, 28, 9, 1.2, skinDD);                                           // neck, in the shadow of the jaw
+  P.ell(24 - fw - .4, 23, 1.7 * F.ear, 2.8 * F.ear, skinD); P.ell(24 + fw + .4, 23, 1.7 * F.ear, 2.8 * F.ear, skinD);   // ears
+  P.ell(24 - fw - .3, 23, .8 * F.ear, 1.6 * F.ear, skinDD); P.ell(24 + fw + .3, 23, .8 * F.ear, 1.6 * F.ear, skinDD);
+  P.ell(24, cy - 1, fw, fh * .9, skin);                                                                   // cranium and cheeks
+  const jw = fw * F.jaw;                                                                                  // the jaw: square, round or pointed
+  if (F.chin === 'square') P.poly([[24 - fw, cy], [24 - jw, chinY - 3], [24 - jw * .55, chinY], [24 + jw * .55, chinY], [24 + jw, chinY - 3], [24 + fw, cy]], skin);
+  else if (F.chin === 'pointed') P.poly([[24 - fw, cy - 1], [24 - jw * .8, chinY - 4], [24 - 1.6, chinY], [24 + 1.6, chinY], [24 + jw * .8, chinY - 4], [24 + fw, cy - 1]], skin);
+  else P.ell(24, cy + 2, fw * .96, fh - 2 + (chinY - cy - fh + 2) * .5, skin);
+  if (F.heavy) { P.ell(24 - jw * .72, chinY - 2.4, 2.4, 1.8, skin); P.ell(24 + jw * .72, chinY - 2.4, 2.4, 1.8, shade(skin, -.04)); P.R(21.5, chinY - .1, 5, .5, shade(skin, -.1)); }   // jowls
+  P.ell(24 + fw * .48, cy + 3, fw * .4, fh * .5, shade(skin, -.04));                                     // the shadow side of the face
+  P.ell(22 - fw * .15, cy - 3, fw * .55, fh * .45, skinL);                                              // the lit forehead and cheek
+  if (F.cheek) { P.line(24 - fw * .78, cy + 1.6, 24 - fw * .4, cy + 3.4, skinD, .3); P.line(24 + fw * .78, cy + 1.6, 24 + fw * .4, cy + 3.4, skinD, .3); }   // high cheekbones
+  P.R(24 - jw * .45, chinY - .6, jw * .9, .6, skinD);                                                     // under the chin
+  if (F.cleft) P.line(24, chinY - 2.2, 24, chinY - .6, skinDD, .25);
+  if (F.stubble) P.ell(24, (cy + chinY) / 2 + 1.5, jw * .8, (chinY - cy) * .42, 'rgba(60,50,40,.12)');   // a day's growth of beard
+  // hair at the temples (the cap covers the rest)
+  if (L.bald) { P.ell(24, top + 2.5, fw * .95, 4.5, skin); P.ell(21, top + 1.5, 3, 1.5, shade(skin, .3)); }
+  else { const hs = shade(L.hair, -.1); P.R(24 - fw - .2, 15, 2.6, 6.4, L.hair); P.R(24 + fw - 2.4, 15, 2.6, 6.4, L.hair); P.R(24 - fw, 15, 1, 6, hs); if (F.age > .6) { P.R(24 - fw - .2, 18.5, 2.4, 2.6, shade(L.hair, .35)); P.R(24 + fw - 2.2, 18.5, 2.4, 2.6, shade(L.hair, .35)); }   // grey at the temples
+    if (L.curly) for (let i = 0; i < 8; i++) P.circ(16 + i * 2.3, 11 + (i % 2), 1.6, L.hair); }
+  // eyes
+  const ey = 21.3 + F.eyeY, gx = 3.6 * F.gap, ew = 2 * F.eye, eh = 1.05 * F.eye;
+  for (const s of [-1, 1]) {
+    const ex = 24 + s * gx;
+    P.ell(ex, ey + .4, ew + .5, eh + .6, shade(skin, -.1));                                               // the socket
+    P.ell(ex, ey, ew, eh, '#f2eee4'); P.circ(ex + .3 * (s > 0 ? 1 : 1), ey, .85 * F.eye, F.iris); P.circ(ex + .3, ey, .4 * F.eye, '#14100c'); P.circ(ex, ey - .3, .22, '#ffffff');
+    P.line(ex - ew, ey - eh * .5, ex + ew, ey - eh * .6, shade(skin, -.45), .35);                         // upper lid
+    if (F.age > .4) { P.line(ex - ew * .6, ey + eh + .6, ex + ew * .7, ey + eh + .4, line, .2); }          // the bags of a long war
+    if (F.age > .55) P.line(ex + s * (ew + .3), ey - .2, ex + s * (ew + 1.4), ey + .6, line, .2);       // crow's feet
+    const by = ey - 2 - F.eyeY * .2, bt = .55 + F.brow * .5, inner = ex - s * ew * .9, outer = ex + s * ew * 1.2;   // brows: thick or thin, stern or mild
+    P.line(inner, by + F.browA * -.7 + (F.browA < 0 ? .5 : 0), outer, by + F.browA * .5, shade(L.hair, -.25), bt);
+  }
+  if (F.age > .45) for (let i = 0; i < 2; i++) P.line(24 - fw * .5, top + 6.4 + i * 1.3, 24 + fw * .5, top + 6.2 + i * 1.3, line, .18);   // a lined forehead (often under the cap)
+  // nose
+  const nl = F.nose, nw = 1.15 * F.noseW, nt = ey + .6 + nl, hk = F.hook;
+  P.poly([[24 + .2, ey + .4], [24 + .9 + hk * .6, ey + nl * .55], [24 + 1.1 + hk, nt - .4], [24 + .3, nt + .2], [24 + .1, ey + 1]], shade(skin, -.1));   // the shadow side of the nose
+  P.line(24 - .3, ey + .8, 24 + .5 + hk, nt - 1, skinL, .3);                                              // the lit bridge
+  P.ell(24 + .3, nt, nw * 1.05, .85, shade(skin, -.06)); P.ell(24 - nw * .55, nt + .35, .42, .3, skinDD); P.ell(24 + nw * .7, nt + .35, .42, .3, skinDD);   // tip and nostrils
+  // mouth
+  const my = Math.min(chinY - 2.6, nt + 2.6), mw = F.mouthW; FACE_AT = {nt, my, mw};
+  P.line(24 - fw * .55, nt - .6, 24 - mw * .55, my + .2, line, .22); P.line(24 + fw * .55, nt - .6, 24 + mw * .55, my + .2, line, .22);   // nasolabial folds
+  if (L.smile) { P.ell(24, my + .5, mw * .48, 1.05, '#5a2a24'); P.R(24 - mw * .38, my - .05, mw * .76, .7, '#f0ece0'); P.ell(24, my + 1.3, mw * .3, .3, '#8a4a40'); P.line(24 - mw * .5, my - .1, 24 - mw * .58, my - .7, line, .22); P.line(24 + mw * .5, my - .1, 24 + mw * .58, my - .7, line, .22); }   // the famous grin
+  else { P.R(24 - mw / 2, my, mw, .55 + F.lips * .3, '#6e3e32'); P.R(24 - mw * .38, my + .7 + F.lips * .3, mw * .76, .35 + F.lips * .5, shade(skin, -.05)); P.R(24 - mw * .3, my + 1.3 + F.lips * .7, mw * .6, .3, skinD);
+    if (F.browA < -.2) { P.px(24 - mw / 2 - .4, my + .5, line); P.px(24 + mw / 2, my + .5, line); } }      // the stern turn-down of the mouth
+}
 function getPortrait(id) {
   let c = portraitCache.get(id + SET.flags); if (c) return c;
   const co = CO[id], L = co.look, nat = natBase(co.nat);
-  c = mkCanvas(96, 96); const g = c.getContext('2d'), P = painter(g, 2);
-  const bgc = {ger:['#4a4c44', '#2e302a'], us:['#3c4a66', '#252e42'], uk:['#5a3a36', '#3a2624'], su:['#6a2a24', '#401a16'], fr:['#2e3e6a', '#1c2642'], pl:['#6a2a30', '#401a1c'], fr40:['#2e3e6a', '#1c2642'], be:['#4a4a2a', '#2a2a18'], jp:['#6a5a3a', '#3a301e'], cn:['#2a3a6a', '#18223e'], zed:['#3a4a32', '#141a10']}[nat] || ['#4a4a4a', '#2a2a2a'];
+  c = mkCanvas(192, 192); const g = c.getContext('2d'), P = painter(g, 4); g.save(); g.scale(2, 2);   // twice the old resolution: the face on the same 48-grid at 4 px a unit; the backdrop in 96-space
+  const bgc = {ger:['#4a4c44', '#2e302a'], us:['#3c4a66', '#252e42'], uk:['#5a3a36', '#3a2624'], su:['#6a2a24', '#401a16'], fr:['#2e3e6a', '#1c2642'], pl:['#6a2a30', '#401a1c'], fr40:['#2e3e6a', '#1c2642'], be:['#4a4a2a', '#2a2a18'], jp:['#6a5a3a', '#3a301e'], cn:['#2a3a6a', '#18223e'], zed:['#3a4a32', '#141a10'], it:['#2e4a32', '#1a2c1c'], gr:['#2a4a7a', '#162a4a']}[nat] || ['#4a4a4a', '#2a2a2a'];
   const grd = g.createLinearGradient(0, 0, 0, 96); grd.addColorStop(0, bgc[0]); grd.addColorStop(1, bgc[1]); g.fillStyle = grd; g.fillRect(0, 0, 96, 96);
   g.save(); g.globalAlpha = .18; drawFlag(g, nat, 0, 0, 96, 64); g.restore();                                // faded national flag behind
-  const vg = g.createRadialGradient(48, 44, 10, 48, 48, 70); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)'); g.fillStyle = vg; g.fillRect(0, 0, 96, 96);
+  const vg = g.createRadialGradient(48, 44, 10, 48, 48, 70); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)'); g.fillStyle = vg; g.fillRect(0, 0, 96, 96); g.restore();
   const skin = L.face, skinD = shade(skin, -.18), skinL = shade(skin, .12), tunic = L.tunic;
   P.poly([[2, 48], [5, 38], [14, 34], [34, 34], [43, 38], [46, 48]], tunic);
   P.R(18, 34, 12, 6, shade(tunic, -.1));
@@ -906,18 +996,7 @@ function getPortrait(id) {
   if (L.ranger) { P.poly([[8, 37], [10.5, 39.5], [8, 42], [5.5, 39.5]], '#e07a20'); P.R(6.8, 39.2, 2.4, .5, '#203a78'); }
   if (nat === 'uk' || nat === 'us' || nat === 'fr') { P.R(10, 41, 5, 1.5, '#c03030'); P.R(10, 42.5, 5, 1, '#3060c0'); P.R(10, 43.5, 5, .8, '#e0c050'); }
   if (nat === 'fr') { P.R(36, 40, 1, 4, '#c8202a'); P.R(35, 41, 3, .6, '#c8202a'); P.R(34.6, 42.3, 3.8, .6, '#c8202a'); }
-  P.R(19, 29, 10, 6, skinD);
-  P.ell(24, 22, 9, 11, skin); P.ell(22, 20, 6, 7, skinL); P.ell(29, 25, 3, 5, shade(skin, -.08));
-  P.R(14, 21, 2, 5, skinD); P.R(32, 21, 2, 5, skinD); P.px(14, 22, skin); P.px(33, 22, skin);
-  if (L.jaw) P.R(17, 28, 14, L.jaw, skinD);
-  if (L.bald) { P.ell(24, 13, 9, 5, skin); P.ell(21, 10.5, 3, 1.5, shade(skin, .3)); }
-  else { P.R(15, 15, 3, 6, L.hair); P.R(31, 15, 3, 6, L.hair); if (L.curly) for (let i = 0; i < 8; i++) P.circ(16 + i * 2.3, 11 + (i % 2), 1.6, L.hair); }
-  P.ell(20.5, 21.3, 2, 1, '#f4f0e8'); P.ell(27.5, 21.3, 2, 1, '#f4f0e8'); P.circ(21, 21.3, .8, '#3a3028'); P.circ(28, 21.3, .8, '#3a3028'); P.circ(20.7, 21, .25, '#fff'); P.circ(27.7, 21, .25, '#fff');
-  P.R(18, 19, 4.5, 1, shade(L.hair, -.2)); P.R(25.5, 19, 4.5, 1, shade(L.hair, -.2)); P.R(18.5, 22.6, 3.5, .4, shade(skin, -.15)); P.R(25.8, 22.6, 3.5, .4, shade(skin, -.15));
-  P.poly([[23.5, 21], [25, 25.5], [23, 26]], skinD); P.R(23, 25.5, 2.4, .7, shade(skinD, -.12)); if (L.nose) P.ell(24.3, 25, 1.6, 1.2, skinD);
-  P.line(19, 25, 20.5, 28, shade(skin, -.1), .25); P.line(29, 25, 27.5, 28, shade(skin, -.1), .25);            // nasolabial folds
-  if (L.smile) { P.ell(24, 28.4, 4.2, 1.6, '#5a2a24'); P.R(20.5, 27.6, 7, 1, '#f0ece0'); P.px(19.5, 27, skinD); P.px(28, 27, skinD); }
-  else { P.R(21, 28, 6, .8, '#7a4a3a'); P.R(21.5, 28.8, 5, .4, shade(skin, .1)); }
+  drawFace(P, id, L, nat);
   if (L.glasses) { P.ell(20.5, 21.3, 2.6, 2, 'rgba(200,220,230,.3)'); P.ell(27.5, 21.3, 2.6, 2, 'rgba(200,220,230,.3)'); P.R(17.8, 19.3, 12.4, .5, '#3a3530'); P.R(23, 21, 1.5, .4, '#3a3530'); }
   if (L.monocle) { P.circ(27.5, 21.3, 2.6, 'rgba(220,235,245,.3)'); P.ell(27.5, 21.3, 2.6, 2.6, 'rgba(255,255,255,.1)'); P.line(30, 23, 31, 30, '#c8c8c8', .25); }
   if (L.cap === 'peaked' || L.cap === 'soviet') {
@@ -945,6 +1024,7 @@ function getPortrait(id) {
     for (let i = 0; i < 6; i++) P.ell(17.5 + i * 2.6, 13.2, .9, .5, '#d8b040');
     P.poly([[14, 15], [34, 15], [31, 18], [17, 18]], '#141414');
   } else if (CAP_EXTRA[L.cap]) CAP_EXTRA[L.cap](P, L, id);
+  if (!CAP_EXTRA[L.cap] && typeof faceExtras === 'function') faceExtras(P, L);     // moustaches under the built-in caps too
   if (L.cane) { P.line(40, 30, 44, 48, '#5a3a20', .8); P.ell(40, 30, 1.5, 1, '#5a3a20'); }
   finish(c, {outline:null, light:.25});
   portraitCache.set(id + SET.flags, c);

@@ -9,7 +9,8 @@ function auInit() {
   if (AU.ctx) { if (AU.ctx.state === 'suspended') AU.ctx.resume(); return; }
   const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
   const ctx = AU.ctx = new C();
-  AU.master = ctx.createGain(); AU.master.gain.value = SET.vol; AU.master.connect(ctx.destination);
+  AU.master = ctx.createGain(); AU.master.gain.value = SET.vol;
+  AU.lp = ctx.createBiquadFilter(); AU.lp.type = 'lowpass'; AU.lp.frequency.value = 22000; AU.master.connect(AU.lp); AU.lp.connect(ctx.destination);   // shell shock closes this
   const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 6; comp.connect(AU.master);
   AU.sfx = ctx.createGain(); AU.sfx.gain.value = .9; AU.sfx.connect(comp);
   // open-field reverb: a decaying noise impulse
@@ -308,6 +309,20 @@ function babble(id, text, o = {}) {
   osc.start(t0); osc.stop(t + .1); if (sub) { sub.start(t0); sub.stop(t + .1); }
   const dur = t - t0;
   return {dur, stop() { try { bus.gain.setTargetAtTime(0, c.currentTime, .03); osc.stop(c.currentTime + .1); if (sub) sub.stop(c.currentTime + .1); } catch (e) {} }};
+}
+/* shell shock: a near miss on the beach. The world goes muffled and far away under a high ringing, the picture
+   drains of colour and shakes, a heartbeat; then the noise of the battle comes flooding back */
+function shellShock(secs = 3.6) {
+  if (FAST) return;
+  document.body.classList.add('shock'); shakeCam(16); setTimeout(() => shakeCam(10), 600); setTimeout(() => document.body.classList.remove('shock'), secs * 1000);
+  if (!SET.sound) return; auInit(); if (!AU.ctx) return;
+  const c = AU.ctx, now = c.currentTime;
+  sfx('boom'); sfx('mg42', .25); sfx('scream', .6);
+  AU.lp.frequency.cancelScheduledValues(now); AU.lp.frequency.setValueAtTime(22000, now); AU.lp.frequency.setTargetAtTime(280, now + .08, .06); AU.lp.frequency.setTargetAtTime(22000, now + secs - .8, .7);
+  const o = c.createOscillator(), g = c.createGain(); o.frequency.value = 3150; g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(.045 * SET.vol, now + .15); g.gain.setTargetAtTime(0, now + secs - 1.2, .8);   // the ringing, outside the muffling
+  o.connect(g); g.connect(c.destination); o.start(now); o.stop(now + secs + 2);
+  for (let i = 0; i < 4; i++) { thump(now + .5 + i * .85, {f0:60, f1:38, dur:.18, gain:.9}); thump(now + .72 + i * .85, {f0:55, f1:35, dur:.14, gain:.6}); }   // a heartbeat
+  if (typeof musicDuck === 'function') { musicDuck(true); setTimeout(() => musicDuck(false), secs * 1000); }
 }
 /* right now, from an animation callback: a ricochet, the clang of a shot on armour, a turret landing */
 function sfxNow(kind) {

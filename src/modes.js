@@ -39,7 +39,8 @@ const WAVE_POOL = [                                    // [role, first wave it a
 function waveCost(n, diff) { return Math.round((7000 + n * 5200 + n * n * 350) * ({easy:.75, normal:1, hard:1.3}[diff] || 1)); }
 function waveRoster(n, nat, diff, seed) {
   const zed = NATION[nat] && NATION[nat].zed;
-  let budget = waveCost(n, diff) * (zed ? ({easy:.5, normal:.7, hard:.9}[diff] || .7) : 1), s = seed >>> 0 || 1; const R = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+  // the dead come in rounds you can finish: a handful at first, a horde by the sixth
+  let budget = waveCost(n, diff) * (zed ? ({easy:.26, normal:.35, hard:.46}[diff] || .35) * (1 + n * .12) : 1), s = seed >>> 0 || 1; const R = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
   const pool = (zed ? ZED_POOL : WAVE_POOL).filter(([r, w]) => n >= w && udef(nat, r));
   const out = {}; let guard = 0;
   while (budget > 0 && guard++ < 60 && pool.length) {
@@ -58,6 +59,7 @@ function waveEdge() {                                  // the enemy comes on fro
 function waveTick() {
   const W = G.waves; if (!W) return;
   if (W.zed && !FAST && typeof sfx === 'function') sfx('chorus');            // the dead, somewhere out in the dark
+  if (W.zed) return zedTick(W);
   if (G.day < W.next) return;
   if (G.units.filter(u => u.team === 2).length >= 24 + W.n) { W.next = G.day + 1; return; }   // the front is choked: the next wave waits for room
   W.n++; W.next = G.day + (W.n >= 8 ? 2 : W.every);
@@ -76,7 +78,40 @@ function waveTick() {
   G.events.push({day:G.day, team:2, done:false, spawn:spec + (big ? `; htank ${x0},${y0}-${x1},${y1}` : ''), say:`Wave ${W.n}${big ? ' (a heavy assault)' : ''}: ${names}. Your quartermaster sends ${fmt(2000 + W.n * 600)} in supplies.`});
   W.best = Math.max(W.best || 0, W.n - 1);
 }
+/* Dead of Night runs in rounds: a wave comes out of the dark close by, you fight it until it is gone, a supply drop
+   and a turn's quiet, then a bigger one. A wave that is not cleared in time is joined by the next anyway. */
+function zedTick(W) {
+  const alive = G.units.filter(u => u.team === 2).length;
+  if (W.n > 0 && alive > 0 && G.day < W.deadline) return;                                    // still fighting this wave
+  if (W.n > 0 && alive === 0 && !W.cleared) {                                                 // wave cleared: supplies, and a breath
+    W.cleared = G.day; const fast = G.day - W.began <= 2, pay = 2000 + W.n * 450 + (fast ? 1500 : 0);
+    G.events.push({day:G.day, team:1, done:false, funds:pay, heal:1, say:`Wave ${W.n} is down${fast ? ', and fast' : ''}. The night goes quiet. A supply drop brings ${fmt(pay)}, and the wounded are patched up. Dig in: the next wave comes in a turn.`});
+    W.best = Math.max(W.best || 0, W.n); W.next = G.day + 1; return;
+  }
+  if (G.day < W.next) return;
+  W.n++; W.began = G.day; W.cleared = 0; W.deadline = G.day + 5 + Math.min(3, W.n >> 2);
+  const roster = waveRoster(W.n, G.teams[2].nat, W.diff, W.seed + W.n * 977), big = W.n % 5 === 0, z = zedNear(roster, W.n);
+  const zn = Object.entries(roster).map(([r, k]) => `${k} ${ZED_SHORT[r] || r}`).join(', ');
+  G.events.push({day:G.day, team:2, done:false, spawn:z.spec + (big ? `; htank ${z.box.join(',').replace(/,(\d+),(\d+)$/, '-$1,$2')}` : ''), say:`Wave ${W.n}: the dead come out of the dark from the ${z.from.join(' and the ')}${big ? ', and something huge moves among them' : ''}. ${zn}.${alive ? ' The last wave is still among you.' : ''}`});
+  if (!FAST && typeof sfx === 'function') { sfx('groan'); sfx('groan', .7); }
+}
+/* where the dead appear: in the dark six to nine tiles from your lines, from one side at first, then from two, then all round */
+function zedNear(roster, n) {
+  const mine = G.units.filter(u => u.team === 1), hq = Object.values(G.props).find(p => p.owner === 1 && terr(p.x, p.y) === 'hq');
+  const cx = mine.length ? Math.round(mine.reduce((a, u) => a + u.x, 0) / mine.length) : hq ? hq.x : G.W >> 1, cy = mine.length ? Math.round(mine.reduce((a, u) => a + u.y, 0) / mine.length) : hq ? hq.y : G.H >> 1;
+  const away = hq ? Math.sign(cx - hq.x) || (hq.x < G.W / 2 ? 1 : -1) : 1;                    // the first wave comes from the side facing away from the HQ
+  const clampBox = ([x0, y0, x1, y1]) => [Math.max(0, Math.min(G.W - 1, x0)), Math.max(0, Math.min(G.H - 1, y0)), Math.max(0, Math.min(G.W - 1, x1)), Math.max(0, Math.min(G.H - 1, y1))];
+  const sides = {east:[cx + 6, cy - 4, cx + 9, cy + 4], west:[cx - 9, cy - 4, cx - 6, cy + 4], north:[cx - 4, cy - 9, cx + 4, cy - 6], south:[cx - 4, cy + 6, cx + 4, cy + 9]};
+  const first = away > 0 ? 'east' : 'west', flank = (G.waves.seed + n) % 2 ? ['north', 'south'] : ['south', 'north'], order = [first, ...flank, first === 'east' ? 'west' : 'east'];
+  const use = order.slice(0, n < 3 ? 1 : n < 6 ? 2 : 4), boxes = use.map(s => clampBox(sides[s]));
+  const parts = {}; let i = 0;
+  for (const [r, k] of Object.entries(roster)) for (let j = 0; j < k; j++, i++) { const b = boxes[i % boxes.length].join(','), key = r + '|' + b; parts[key] = (parts[key] || 0) + 1; }
+  const spec = Object.entries(parts).map(([key, k]) => { const [r, b] = key.split('|'), [x0, y0, x1, y1] = b.split(','); return `${r}*${k} ${x0},${y0}-${x1},${y1}`; }).join('; ');
+  return {spec, from:use, box:boxes[0]};
+}
 function waveGoal() { const W = G.waves; if (!W) return ''; const left = Math.max(0, W.next - G.day);
+  if (W.zed) { const alive = G.units.filter(u => u.team === 2).length;
+    return !W.n ? 'The dead are coming. First wave this turn.' : alive ? `Wave ${W.n} · ${alive} of the dead still walking · kill them all before the next wave joins them (${Math.max(0, W.deadline - G.day)} turn${W.deadline - G.day === 1 ? '' : 's'})` : `Wave ${W.n} cleared · the next comes ${left ? 'in ' + left + ' turn' + (left > 1 ? 's' : '') : 'now'}`; }
   const nat = G.teams[2].nat, nx = waveRoster(W.n + 1, nat, W.diff, W.seed + (W.n + 1) * 977), short = r => W.zed && ZED_SHORT[r] || ({inf:'infantry', at:'anti-tank', recon:'recon', mortar:'mortars', eng:'engineers', cav:'cavalry', apc:'carriers', tank:'tanks', art:'guns', mtank:'medium tanks', aa:'flak', rkt:'rockets', ftr:'fighters', bmr:'bombers', htank:'heavy tanks'})[r] || r;
   const scout = ` · scouts report: ${Object.entries(nx).map(([r, k]) => `${k} ${short(r)}`).join(', ')}`;
   return (W.n ? `Wave ${W.n} · ${G.units.filter(u => u.team === 2).length} enemy units · next wave ${left ? 'in ' + left + ' turn' + (left > 1 ? 's' : '') : 'now'}` : `First wave in ${left} turn${left === 1 ? '' : 's'}`) + scout; }

@@ -90,7 +90,7 @@ function draw(t) {
 }
 /* everything this unit could hit this turn: from any tile it can stop on (or from where it stands, for guns that must not move) */
 function attackZone(u) {
-  const zone = new Set(), [a, b] = rangeOf(u); if (!b || (u.d.air && isNight())) return zone;
+  const zone = new Set(), [a, b] = rangeOf(u); if (!b || (u.d.air && airGrounded())) return zone;
   const origins = u.d.indirect ? [{x:u.x, y:u.y}] : [...UI.reach.values()].filter(n => canStop(u, n.x, n.y));
   for (const o of origins) for (let dy = -b; dy <= b; dy++) for (let dx = -b; dx <= b; dx++) {
     const d = Math.abs(dx) + Math.abs(dy), x = o.x + dx, y = o.y + dy;
@@ -132,7 +132,13 @@ function drawUnit(u, t) {
   const f = u.moving || u.d.air || u.d.sea ? anim : (u.d.foot ? (Math.floor(frame / 3) + u.id) % 2 * 2 : 0);
   const img = getSprite(nat, u.role, f, grey, spriteVar(u, G.theme));
   const bob = u.d.air ? Math.round(Math.sin(t / 300 + u.id) * 3) - 8 : 0;
-  const wet = (!u.d.sea && !u.d.air && ['sea', 'river'].includes(terr(u.x, u.y)) && !u.moving) || (u.d.sub && !u.revealed && !u.moving);   // DD tanks swimming, U-boats at periscope depth
+  const wet = (!u.d.sea && !u.d.air && ['sea', 'river', 'shallows'].includes(terr(u.x, u.y)) && !u.moving) || (u.d.sub && !u.revealed && !u.moving);   // DD tanks swimming, U-boats at periscope depth
+  if (SET.mine) {                                     // your army at a glance: a pulsing gold ring on yours, a thin red one on theirs
+    const own = u.team === (viewerTeam() || G.turn), cy = Y + ART - 7 + (u.d.air ? 1 : 0);
+    ctx.strokeStyle = own ? `rgba(255,211,74,${(.7 + .3 * Math.sin(t / 260)).toFixed(2)})` : 'rgba(225,60,45,.75)'; ctx.lineWidth = own ? 4 : 2;
+    ctx.beginPath(); ctx.ellipse(X + ART / 2, cy, 27, 7, 0, 0, 7); ctx.stroke();
+    if (own) { const ty = Y - 6 + bob + Math.sin(t / 260) * 2; ctx.fillStyle = '#ffd34a'; ctx.strokeStyle = '#1a1814'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(X + ART / 2 - 6, ty); ctx.lineTo(X + ART / 2 + 6, ty); ctx.lineTo(X + ART / 2, ty + 7); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  }
   if (u.d.air) { ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(X + ART / 2, Y + ART - 6, 20, 5, 0, 0, 7); ctx.fill(); }
   else if (!u.d.sea && !wet) { ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(X + ART / 2, Y + ART - 7, 24, 5, 0, 0, 7); ctx.fill(); }
   ctx.save();
@@ -174,6 +180,7 @@ mm.addEventListener('pointerdown', e => { if (!G) return; const r = mm.getBoundi
 /* ---------- HUD ---------- */
 function hud() {
   if (!G) return;
+  nextCount();
   for (const t of [1, 2]) {
     const T = G.teams[t], c = CO[T.co], el = $('#co' + t);
     el.classList.toggle('active', G.turn === t);
@@ -201,7 +208,10 @@ function hud() {
   $('#ffwd').hidden = !isAI(G.turn);
   infoPanel();
 }
-function portraitCanvas(id, s) { const src = getPortrait(id), c = mkCanvas(96 * s, 96 * s), g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(src, 0, 0, 96 * s, 96 * s); return c; }
+function portraitCanvas(id, s) {                      // the portrait is painted at 192 px; shown at 96 × s, sharp on high-density screens
+  const src = getPortrait(id), px = Math.round(Math.max(96 * s, 192)), c = mkCanvas(px, px), g = c.getContext('2d'); g.imageSmoothingEnabled = px < src.width; g.drawImage(src, 0, 0, px, px);
+  c.style.width = c.style.height = 96 * s + 'px'; return c;
+}
 function flagCanvas(nat, w, h) { const c = mkCanvas(w * 2, h * 2); drawFlag(c.getContext('2d'), nat, 0, 0, w * 2, h * 2); c.style.width = w + 'px'; c.style.height = h + 'px'; return c; }
 function spriteCanvas(nat, role, s = 1, flip = false) { const src = getSprite(nat, role, 0), c = mkCanvas(ART * s, ART * s), g = c.getContext('2d'); g.imageSmoothingEnabled = false; if (flip) { g.translate(ART * s, 0); g.scale(-1, 1); } g.drawImage(src, 0, 0, ART * s, ART * s); return c; }
 function infoPanel() {
@@ -234,10 +244,11 @@ function say(coId, text) {
     const d = $('#dialog'); d.querySelector('.pt').replaceChildren(portraitCanvas(coId, 1)); d.querySelector('.who').textContent = CO[coId].rank + ' ' + CO[coId].n;
     const txt = d.querySelector('.txt'); txt.textContent = ''; d.hidden = false;
     // he speaks: the line types out in time with his mumbling voice; a click finishes the line, a second click closes it
+    musicDuck(true);
     const v = babble(coId, text, {zed:CO[coId].nat === 'zed'}), ms = Math.max(400, Math.min(v ? v.dur * 1000 : 0, text.length * 45) || text.length * 18), t0 = performance.now();
     let full = false; const tick = setInterval(() => { const n = Math.ceil(text.length * Math.min(1, (performance.now() - t0) / ms)); txt.textContent = text.slice(0, n); if (n >= text.length) { full = true; clearInterval(tick); } }, 30);
     const finish = () => { clearInterval(tick); txt.textContent = text; full = true; if (v) v.stop(); };
-    const close = () => { if (!full) return finish(); finish(); d.hidden = true; d.removeEventListener('click', close); removeEventListener('keydown', key); res(); };
+    const close = () => { if (!full) return finish(); finish(); musicDuck(false); d.hidden = true; d.removeEventListener('click', close); removeEventListener('keydown', key); res(); };
     const key = e => { if (['Enter', ' ', 'z', 'Z', 'Escape'].includes(e.key)) close(); };
     d.addEventListener('click', close); addEventListener('keydown', key);
     if (G && (G.watch || (G.teams[1].ai && G.teams[2].ai))) setTimeout(() => { if (!d.hidden) { finish(); close(); } }, 2600 + text.length * 25);   // spectators are not asked to click
@@ -278,6 +289,7 @@ async function doAttack(u, t) {
     else { const dk = res.killed && deathKind(t.d); await fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty, dk}, res.killed); if (res.killed) killSound(t.d, .05, dk); }
     fxText(tx, ty, '-' + (Math.ceil(preD / 10) - Math.max(0, Math.ceil(t.hp / 10))));
     if (res.counter) { if (!SET.battle) { const dk = res.cKilled && deathKind(u.d); await sleep(200); await fxAttackMap({...t, x:tx, y:ty}, {...u, x:ux, y:uy, dk}, res.cKilled); if (res.cKilled) killSound(u.d, .05, dk); } fxText(ux, uy, '-' + (Math.ceil(preA / 10) - Math.max(0, Math.ceil(u.hp / 10)))); }
+    if (res.pinned && G.units.includes(res.pinned)) { fxText(res.pinned.x, res.pinned.y, 'PINNED DOWN', '#ffb060', 1800); fxBark(res.pinned, 'hurt'); }
     if (res.killed && G.units.includes(u)) fxBark(u, 'kill');
     else if (G.units.includes(t) && t.hp <= 40) fxBark(t, 'hurt');
     else if (G.units.includes(u) && u.hp <= 30) fxBark(u, 'hurt');
@@ -323,11 +335,13 @@ let EPOCH = 0;
 const stale = ep => ep !== EPOCH || !G;
 async function beginTurn() {
   const team = G.turn, ep = EPOCH;
-  const {rep} = startTurn(team);
+  const {rep, pinned} = startTurn(team);
   UI.mode = 'idle'; UI.sel = null; UI.reach = null; UI.hoverEnemy = null;
   if (isLocalHotseat() && !FAST) { UI.busy = true; await handoff(team); UI.busy = false; if (stale(ep)) return; }
   hud(); musicMood(isNight() ? 'night' : G.teams[team].nat);
   await banner(fmtClock(G.day), `Turn ${G.day} · ${NATION[G.teams[team].nat].n} · ${CO[G.teams[team].co].n}`); if (stale(ep)) return;
+  for (const u of pinned || []) fxText(u.x, u.y, 'PINNED DOWN', '#ffb060', 1800);
+  if ((pinned || []).length && !isAI(team)) tip('pinned', 'Pinned down: a squad cut to half strength in the open on the beach goes to ground and cannot move or fire for a turn. Get them off the sand fast, to the shingle and the cover under the bluffs.');
   for (const u of rep) { fxText(u.x, u.y, '+repair', '#9ae07a'); part({kind:'cross', x:T2W(u.x, u.y)[0], y:T2W(u.x, u.y)[1], life:900}); }
   for (const e of dueEvents()) {
     const made = runEvent(e);
@@ -337,7 +351,7 @@ async function beginTurn() {
   }
   if (checkEnd()) return gameOver();
   hud();
-  if (!isAI(team)) { if (isNight()) tip('night', 'Night has fallen. Aircraft are grounded and you can only see what your units can see. Woods, hedgerows and towns hide the enemy until you are next to them.'); else if (G.fog) tip('fog', 'Fog of war: you only see what your units see. Moving into an unseen enemy springs an ambush and ends the move. Recon cars and aircraft see furthest.');
+  if (!isAI(team)) { if (isNight()) tip('night', (airGrounded() ? 'Night has fallen. Aircraft are grounded and' : 'Night has fallen, but these crews are trained to attack by flarelight. Still,') + ' you can only see what your units can see. Woods, hedgerows and towns hide the enemy until you are next to them.'); else if (G.fog) tip('fog', 'Fog of war: you only see what your units see. Moving into an unseen enemy springs an ambush and ends the move. Recon cars and aircraft see furthest.');
     if (G.units.some(u => u.d.sub && u.team !== team)) tip('subs', 'Enemy U-boats are lurking submerged and invisible. Your escorts\' asdic finds them within two squares, aircraft spot them when overhead, and any ship alongside will see them. A U-boat that fires gives itself away until its next turn.');
     if (G.waves && G.waves.zed) tip('zed', 'Dead of Night: the dead come in waves, from more directions as the night goes on. Any infantry they kill rises as a Walker, so keep them at a distance: machine-gun nests, artillery and armour. Spitters lob bile over walls; Brutes tear open tanks; an Abomination comes every fifth wave.');
   else if (G.waves) tip('waves', 'Last Stand: waves come from the far edge every few turns, each stronger than the last. Supplies arrive with every wave; spend them at your depots. Dig in: units that hold still gain a star of cover.');
@@ -481,7 +495,7 @@ function selectTile(x, y) {
 }
 /* every tile a unit could attack on its next turn: from anywhere it can move to, or from where it stands for guns that cannot move and fire */
 function threatTiles(e) {
-  const set = new Set(), [a, b] = rangeOf(e); if (!b || (e.d.air && isNight())) return set;
+  const set = new Set(), [a, b] = rangeOf(e); if (!b || (e.d.air && airGrounded())) return set;
   const r = e.d.indirect || e.d.fixed ? new Map([[K(e.x, e.y), {x:e.x, y:e.y}]]) : reach(e);
   for (const n of r.values()) for (let dy = -b; dy <= b; dy++) for (let dx = -b; dx <= b; dx++) { const d = Math.abs(dx) + Math.abs(dy); if (d >= a && d <= b && inside(n.x + dx, n.y + dy)) set.add(K(n.x + dx, n.y + dy)); }
   return set;
@@ -512,6 +526,20 @@ function toggleDanger() {
   SET.danger = !SET.danger; saveSet(); const b = $('#danger'); if (b) { b.classList.toggle('on', !!SET.danger); b.setAttribute('aria-pressed', SET.danger ? 'true' : 'false'); }
   if (SET.danger) tip('danger', 'Danger zone: red shows every tile a visible enemy could attack on its next turn, after moving. Darker red means several enemies can reach it. Press T or the Danger button to hide it.');
 }
+/* ---------- your army at a glance: gold rings on your units, red on the enemy's (U) ---------- */
+function toggleMine() {
+  SET.mine = !SET.mine; saveSet(); const b = $('#mine'); if (b) { b.classList.toggle('on', !!SET.mine); b.setAttribute('aria-pressed', SET.mine ? 'true' : 'false'); }
+}
+/* the next unit you have not used: picked up and ready to move (the Next button; Tab only moves the cursor) */
+function nextUnit() {
+  if (!G || UI.busy || isAI(G.turn) || G.over) return;
+  if (UI.mode === 'move') cancel(); if (UI.mode !== 'idle') return;
+  const ready = G.units.filter(u => u.team === G.turn && !u.done && !u.d.fixed).sort((a, b) => a.y - b.y || a.x - b.x);
+  if (!ready.length) { fxText(UI.cursor.x, UI.cursor.y, 'All units have moved', '#f4e8c8'); return; }
+  const i = ready.findIndex(u => u.x === (UI.lastNext || {}).x && u.y === UI.lastNext.y), u = ready[(i + 1) % ready.length];
+  UI.lastNext = {x:u.x, y:u.y}; centerOn(u.x, u.y); selectTile(u.x, u.y); hoverUpdate();
+}
+function nextCount() { const b = $('#nextu'); if (!b || !G) return; const n = G.units.filter(u => u.team === G.turn && !u.done && !u.d.fixed).length; b.textContent = n ? `Next · ${n}` : 'Next'; b.disabled = !n || isAI(G.turn); }
 function cancel() {
   if (UI.mode === 'move') { UI.mode = 'idle'; UI.sel = null; UI.reach = null; sfx('cancel'); }
   else if (['menu', 'target', 'unload', 'clear', 'bridge'].includes(UI.mode)) {
@@ -548,13 +576,54 @@ function openActions(u) {
   }
   menuAt(items, u.x, u.y);
 }
+/* ---------- the forecast: what an attack will do, before you commit ----------
+   Shown when choosing a target (Fire), and when hovering an enemy your selected unit could reach this turn
+   (worked out from the best tile it could attack from). Damage range, the target's HP before and after,
+   the counter-attack you would take, and why the numbers are what they are. */
+function attackFrom(u, t) {                             // the tile the selected unit would fire from: where it stands, or the safest reachable tile in range
+  if (u.d.indirect || u.d.fixed || inRange(u, u.x, u.y, t)) return inRange(u, u.x, u.y, t) ? [u.x, u.y] : null;
+  let best = null, bs = -1;
+  for (const n of (UI.reach || new Map()).values()) {
+    if (!inRange(u, n.x, n.y, t) || !canStop(u, n.x, n.y) || (unitAt(n.x, n.y) && unitAt(n.x, n.y) !== u)) continue;
+    const s = TER[terr(n.x, n.y)].def; if (s > bs) { bs = s; best = [n.x, n.y]; }
+  }
+  return best;
+}
+function forecastHTML(u, t, ax, ay, firing) {
+  const span = (a, b) => a === b ? String(a) : a + '–' + b, hp = v => Math.max(0, Math.ceil(v / 10));
+  const lo = calcDamage(u, t, u.hp, 0, ax, ay), hi = calcDamage(u, t, u.hp, 9, ax, ay);
+  const stars = t.d.air ? 0 : TER[terr(t.x, t.y)].def + (t.dug ? 1 : 0);
+  let h = `<div class="fc-row"><b class="fc-me">${u.d.n}</b> ▶ <b class="fc-foe">${t.d.n}</b> <span class="fc-dim">${t.d.air ? 'in the air' : TER[terr(t.x, t.y)].n + ' ' + '★'.repeat(stars) + (t.dug ? ' (dug in)' : '')}</span></div>`;
+  h += `<div class="fc-row">Damage <b>${span(lo, hi)}%</b> · its HP ${hp(t.hp)} → <b>${span(hp(t.hp - hi), hp(t.hp - lo))}</b>${lo >= t.hp ? ' <b class="fc-kill">DESTROYS</b>' : hi >= t.hp ? ' <span class="fc-may">may destroy</span>' : ''}</div>`;
+  const tFrom = Object.assign({}, u, {x:ax, y:ay, dug:ax === u.x && ay === u.y && u.dug});   // a foxhole only counts if it fires from where it dug in
+  if (lo < t.hp && canCounter(t, tFrom)) {
+    const c1 = calcDamage(Object.assign({}, t, {hp:t.hp - hi}), tFrom, Math.max(1, t.hp - hi), 0, t.x, t.y, ax, ay), c2 = calcDamage(Object.assign({}, t, {hp:t.hp - lo}), tFrom, t.hp - lo, 9, t.x, t.y, ax, ay);
+    h += `<div class="fc-row">Counter <b class="fc-foe">${span(c1, c2)}%</b> · your HP ${hp(u.hp)} → ${span(hp(u.hp - c2), hp(u.hp - c1))}${c2 >= u.hp ? ' <span class="fc-may">could lose it</span>' : ''}</div>`;
+  } else h += `<div class="fc-row fc-dim">${lo >= t.hp ? 'No counter: it will not survive' : u.d.indirect ? 'Indirect fire: no counter' : !canHit(t, u) ? 'It cannot fire back at you' : 'No counter-attack'}</div>`;
+  // why: the pieces of the damage sum (engine.js calcDamage)
+  const atk = sumGroup(u.team, 'atk', u.d, terr(ax, ay)) + (G.teams[u.team].power ? 10 : 0) + RANKS[rankOf(u)].atk, dco = sumGroup(t.team, 'def', t.d, terr(t.x, t.y)) + (G.teams[t.team].power ? 10 : 0) + RANKS[rankOf(t)].def;
+  const why = [`${Math.round(baseDmg(u.d, t.d) * u.d.pow * (t.d.armour ? u.d.powArm : 1))}% base vs ${t.d.n.split(' (')[0]}`];
+  if (atk) why.push(`your bonuses ${atk > 0 ? '+' : ''}${atk}%`);
+  if (stars) why.push(`its cover −${stars * hp(t.hp)}%`);
+  if (dco) why.push(`its bonuses ${dco > 0 ? '+' : ''}${dco}% defence`);
+  if (hp(u.hp) < 10) why.push(`your strength ${hp(u.hp)}/10`);
+  if (t.d.arm < 1) why.push('fortified');
+  h += `<div class="fc-row fc-dim">Why: ${why.join(' · ')}</div>`;
+  if (firing) h += `<div class="fc-btns"><button id="fcGo">Attack</button><button id="fcBack" class="ghost">Back</button></div>`;
+  else h += `<div class="fc-row fc-dim">${ax === u.x && ay === u.y ? 'From where it stands.' : 'If it moves in and fires from the best cover in reach.'}</div>`;
+  return h;
+}
 function forecast() {
-  const el = $('#forecast'); const u = UI.sel, t = unitAt(UI.cursor.x, UI.cursor.y);
-  if (UI.mode !== 'target' || !t || !UI.targets.some(([x, y]) => x === t.x && y === t.y)) { el.hidden = true; return; }
-  const lo = calcDamage(u, t, u.hp, 0), hi = calcDamage(u, t, u.hp, 9);
-  let cnt = '';
-  if (canCounter(t, u) && t.hp - hi > 0) { const left = t.hp - lo; cnt = ` · counter ≈ ${calcDamage(Object.assign({}, t, {hp:left}), u, left, 4)}%`; }
-  el.textContent = `${t.d.n}: damage ${lo}–${hi}%${cnt}`; el.hidden = false;
+  const el = $('#forecast'), u = UI.sel, t = unitAt(UI.cursor.x, UI.cursor.y);
+  const hide = () => { el.hidden = true; el.dataset.k = ''; };
+  if (!u || !t || t.team === u.team || !seen(t)) return hide();
+  let ax = u.x, ay = u.y, firing = false;
+  if (UI.mode === 'target') { if (!UI.targets.some(([x, y]) => x === t.x && y === t.y)) return hide(); firing = true; }
+  else if (UI.mode === 'move') { if (!canHit(u, t) || u.d.air && airGrounded()) return hide(); const f = attackFrom(u, t); if (!f) return hide(); [ax, ay] = f; }
+  else return hide();
+  const key = [u.id, t.id, ax, ay, firing, u.hp, t.hp].join(); if (el.dataset.k === key && !el.hidden) return;
+  el.dataset.k = key; el.innerHTML = forecastHTML(u, t, ax, ay, firing); el.hidden = false;
+  if (firing) { $('#fcGo').onclick = e => { e.stopPropagation(); fireAt(t); }; $('#fcBack').onclick = e => { e.stopPropagation(); cancel(); }; }
 }
 async function finishAction(u) {
   if (G.units.includes(u)) finishUnit(u);
@@ -652,6 +721,8 @@ addEventListener('keydown', e => {
   if (k === 'Tab') { e.preventDefault(); cycleUnit(e.shiftKey ? -1 : 1); }
   if ((k === 'h' || k === 'H') && UI.mode === 'idle') showHint();
   if (k === 't' || k === 'T') toggleDanger();
+  if (k === 'u' || k === 'U') toggleMine();
+  if (k === 'n' || k === 'N') nextUnit();
   if (k === 'm' || k === 'M') $('#minimap').classList.toggle('off');
   if (k === '+' || k === '=') zoomAt(innerWidth / 2, innerHeight / 2, cam.z * 1.2);
   if (k === '-') zoomAt(innerWidth / 2, innerHeight / 2, cam.z / 1.2);
@@ -695,6 +766,7 @@ function enterGame() {
   spriteCache.clear(); propCache.clear();
   buildTerrain(); show('gamehud'); $('#result').hidden = true; resize(); fitCamera(); hud();
   { const b = $('#danger'); if (b) { b.classList.toggle('on', !!SET.danger); b.setAttribute('aria-pressed', SET.danger ? 'true' : 'false'); } }
+  { const b = $('#mine'); if (b) { b.classList.toggle('on', !!SET.mine); b.setAttribute('aria-pressed', SET.mine ? 'true' : 'false'); } }
   musicMood(G.teams[G.turn].nat);
 }
 function continueGame() {
@@ -837,7 +909,7 @@ function openArmoury(nat) { openArchive('arms', nat); }
 /* the armoury tabs: several armies share a country, so each is named for its period or theatre */
 const ARMY_LABEL = {ger:'Germany 1943–45', ger40:'Germany 1939–43 & at sea', dak:'Afrika Korps 1941–43', us:'US Army, Europe 1943–45', usp:'US forces, Pacific 1941–45', uk:'Britain 1944–45', uk40:'Britain 1939–43, Malaya & at sea',
   uk42:'Britain, Desert 1941–43', su:'Soviet Union 1943–45', su41:'Soviet Union 1941–42', fr:'Free France 1944', ffl:'Free French, Desert 1942', fr40:'France 1940', be:'Belgium 1940',
-  pl:'Poland 1939', jp:'Japan 1937–45', cn:'China 1937–45', it:'Italy 1940–43', zed:'The Dead'};
+  pl:'Poland 1939', jp:'Japan 1937–45', cn:'China 1937–45', it:'Italy, Africa 1940–43', itgv:'Italy, Europe 1940–43', itcb:'Italy, Co-Belligerent 1943–45', gr:'Greece 1940–41', gres:'Greek Resistance 1942–44', zed:'The Dead'};
 /* the Archive: armoury, generals, battles and glossary */
 function openArchive(tab = 'arms', nat = 'ger') {
   document.querySelectorAll('#arctabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
@@ -904,12 +976,14 @@ function boot() {
   addEventListener('resize', () => { resize(); if (document.body.dataset.screen === 'title') drawTitle(); });
   resize(); requestAnimationFrame(draw);
   const on = (id, f) => $(id).addEventListener('click', e => { auInit(); sfx('click'); f(e); });
+  on('#tmnext', () => { if (!SET.music) { SET.music = true; saveSet(); } if (!MUSIC.mood) musicMood('title', true); else playNext(); titleMusicLabel(); });
+  on('#tmmute', () => { SET.music = !SET.music; saveSet(); musicToggle(); if (SET.music && !MUSIC.playing) musicMood('title', true); titleMusicLabel(); });
   on('#bcampaign', openCampaigns); on('#bskirmish', openSkirmish); on('#bsettings', openSettings); on('#bhelp', () => show('help')); on('#bcredits', openCredits); on('#barmoury', () => openArmoury('ger')); on('#bmulti', () => show('multi')); on('#mphot', () => { openSkirmish(); $('#s2ai').value = 'human'; }); on('#mpcode', askTurnCode); on('#mponline', openOnline); on('#netcreate', createOnline); on('#netjoin', joinOnline);
   on('#bjukebox', () => { show('jukebox'); renderJukebox(); });
   on('#continue', continueGame);
   document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => { sfx('cancel'); const to = b.dataset.to || 'title'; if (to === 'campaign' && UI.campaign) openCampaign(UI.campaign); else if (to === 'campaigns') openCampaigns(); else show(to); }));
   on('#sgo', launchSkirmish); on('#optsave', () => { applySettings(); show('title'); });
-  on('#endturn', endTurnClick); on('#danger', toggleDanger); on('#cop', () => usePower(G.turn, 1)); on('#scop', () => usePower(G.turn, 2));
+  on('#endturn', endTurnClick); on('#danger', toggleDanger); on('#mine', toggleMine); on('#nextu', nextUnit); on('#cop', () => usePower(G.turn, 1)); on('#scop', () => usePower(G.turn, 2));
   on('#ffwd', () => { SET.aiFast = !SET.aiFast; saveSet(); $('#ffwd').classList.toggle('on', SET.aiFast); });
   on('#quit', () => { if (G && !G.over) { undoPendingMove(); autosave(); } EPOCH++; UI.busy = false; show('title'); musicMood('title'); });
   on('#co1', () => showCO(G.teams[1].co)); on('#co2', () => showCO(G.teams[2].co));

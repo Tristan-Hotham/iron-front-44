@@ -75,14 +75,16 @@ const MISSIONS = {
       {day:2, team:1, say:'Shermans of the 743rd and the 5th Rangers fight through from Omaha to relieve the Point.', spawn:'tank*2 27,4-29,6; inf*3 26,3-29,7'}]},
 
   omaha: {name:'Omaha Beach', place:'Vierville to Colleville, Normandy', date:'6 June 1944, 06:30', theme:'normandy', weather:'overcast',
-    p1:{nat:'us', co:'bradley', funds:4000}, p2:{nat:'ger', co:'rommel', funds:0}, income:{2:.25},
-    objective:{win:'hq'}, goal:'Get off the beach: open the four draws, then take the 352nd Division\'s command post at Trévières.',
+    p1:{nat:'us', co:'bradley', funds:4000}, income:{2:.25}, pin:true,
+    p2:{nat:'ger', co:'rommel', funds:0, u:{nest:{n:'MG 42 Widerstandsnest', w:'MG 42s firing down the length of the beach in interlocking fields', pow:1.25, rng:[1, 6]},
+      mortar:{n:'Granatwerfer (ranged on the beach)', w:'81 mm mortars, every yard of sand pre-registered', rng:[2, 8]}}},
+    objective:{win:'hq'}, goal:'Get off the beach: wade in, cross the sand to the shingle, open the four draws, then take the 352nd Division\'s command post at Trévières.',
     brief:'H-Hour, 06:30. The 1st and 29th Infantry Divisions go in against four miles of beach under 100-foot bluffs. The bombers have missed, most of the amphibious tanks have foundered, and the tide is covering the obstacle belt. Fourteen Widerstandsnester cover the beach, their MG 42s sited to fire along it and their 88s in casemates aimed at the sand, not the sea. The only ways off are the four draws: D-1 Vierville, D-3 Les Moulins, E-1 Saint-Laurent and E-3 Colleville. Engineers can blow lanes through obstacles and wire. The beachhead supply dumps can land reinforcements once the beach is held. Bring the destroyers in close; they will be decisive.',
     build:() => { const b = MB(48, 30, 'h', 202);
       b.blobs('.', 34, 0, 0, 47, 13, 1, 2).blobs(',', 12, 0, 0, 47, 12, 1, 2).blobs('T', 7, 0, 0, 47, 10, 1, 2);
-      b.rect(0, 25, 47, 29, '~').rect(0, 23, 47, 24, 'O');
-      for (const x of [3, 4, 10, 11, 16, 23, 29, 35, 41, 46]) b.rect(x, 23, x, 24, 's');
-      b.rect(0, 21, 47, 22, 's').rect(2, 20, 45, 20, 'n').rect(0, 15, 47, 19, '^').rect(2, 16, 45, 16, 'z').rect(1, 19, 46, 19, 'w').scatter('m', .3, 1, 17, 46, 18, ['^']);
+      b.rect(0, 27, 47, 29, '~').rect(0, 25, 47, 26, 'S').rect(0, 24, 47, 24, 'O');       // the boats ground on the sandbars: two rows of wading, then the obstacles
+      for (const x of [3, 4, 10, 11, 16, 23, 29, 35, 41, 46]) b.rect(x, 24, x, 24, 's');
+      b.rect(0, 21, 47, 23, 's').rect(2, 20, 45, 20, 'n').rect(0, 15, 47, 19, '^').rect(2, 16, 45, 16, 'z').rect(1, 19, 46, 19, 'w').scatter('m', .3, 1, 17, 46, 18, ['^']);
       b.rect(0, 15, 1, 22, 'u');
       for (const dx of [7, 17, 28, 38]) { b.rect(dx - 1, 15, dx + 1, 18, '.'); b.road([[dx, 13], [dx, 20]]); b.set(dx - 1, 19, 'w').set(dx + 1, 19, 'w');
         b.set(dx - 2, 17, 'B').set(dx + 2, 17, 'B'); }
@@ -91,14 +93,17 @@ const MISSIONS = {
       b.town(7, 10, 3, 'c', 2).town(27, 10, 3, 'c', 2).town(38, 10, 3, 'c', 2);
       b.put([[22, 2, 'q'], [10, 2, 'k'], [40, 3, 'k'], [3, 5, 'k'], [45, 8, 'k'], [30, 2, 'k'], [25, 12, 'f'], [33, 11, 'c'], [14, 22, 'F'], [33, 22, 'F']]);   // beachhead supply dumps
       return b.rows(); },
-    units:{1:'lc 3,26 +inf+inf; lc 6,27 +inf+eng; lc 10,26 +inf+inf; lc 13,27 +eng+at; lc 16,26 +inf+inf; lc 19,27 +inf+eng; lc 23,26 +tank+inf; lc 26,27 +inf+inf; lc 29,26 +inf+eng; lc 32,27 +inf+at; lc 35,26 +inf+inf; lc 38,27 +tank+inf; lc 41,26 +inf+eng; lc 44,27 +inf+inf; ddtank*4 18,25-26,25; ddtank 12,22 7; ddtank 30,22 6; inf*6 2,21-45,22 7; eng*2 10,22-35,22 6; dd 8,28; dd 24,29; dd 38,28',
+    units:{1:'lc 1,27 +inf+inf; lc 3,28 +inf+inf; lc 6,27 +inf+eng; lc 8,28 +inf+inf; lc 10,27 +inf+inf; lc 13,28 +eng+at; lc 16,27 +inf+inf; lc 19,28 +inf+eng; lc 21,27 +inf+inf; lc 23,28 +tank+inf; lc 26,27 +inf+inf; lc 29,28 +inf+eng; lc 31,27 +inf+inf; lc 32,28 +inf+at; lc 35,27 +inf+inf; lc 38,28 +tank+inf; lc 40,27 +inf+inf; lc 41,28 +inf+eng; lc 44,27 +inf+inf; ddtank*2 18,25-26,25 5; ddtank 12,22 7; ddtank 30,22 6; inf*6 2,21-45,22 7; eng*2 10,22-35,22 6; dd 8,28; dd 24,29; dd 38,28',
       2:'nest 5,17; nest 9,17; nest 15,17; nest 19,17; nest 26,17; nest 30,17; nest 36,17; nest 40,17; nest 12,17; nest 22,17; nest 33,17; nest 43,17; pak 9,18; pak 40,18; pak 30,18; mortar*4 3,14-44,14 !; art 12,8 !; art 25,7 !; art 34,8 !; inf*8 2,15-45,16; at*2 5,13-42,13; inf*4 5,9-40,11'},
     events:[
+      {day:1, team:1, say:'06:31. The boats ground on the sandbars, a hundred yards out, and the ramps go down into neck-deep water. Most of the 741st Tank Battalion\'s DD tanks have foundered far out; two are swimming in, half swamped. The MG 42s open up down the length of the beach. Only at Les Moulins, where the naval shells have set the grass burning, does smoke hide the men.', shock:3.8, smoke:[13, 18, 21, 26, 2]},
+      {day:1, team:1, say:'C Company, 2nd Rangers lands on the right flank at Charlie, and the 16th Infantry\'s support boats follow the assault wave in.', spawn:'lc*2 2,27-12,28 +inf+inf; lc*2 30,27-44,28 +inf+inf'},
       {day:2, team:1, say:'Destroyers close to 800 yards and pound the strongpoints over the heads of the infantry. Funds for naval fire support.', funds:4000},
       {day:2, team:1, say:'The second wave: LCTs with Shermans of the 741st and 743rd Tank Battalions.', spawn:'lc*4 4,27-44,28 +tank+inf'},
       {day:3, team:2, say:'Kampfgruppe Meyer, the 352nd\'s reserve, is ordered to the coast.', spawn:'inf*4 0,2-6,6; at 2,4; tank*2 40,2-46,5'},
       {day:3, team:1, say:'Engineers of the Special Engineer Task Force have blown lanes through the obstacles.', clear:[[13, 23], [13, 24], [20, 23], [20, 24], [26, 23], [26, 24], [32, 23], [32, 24], [38, 23], [38, 24]]},
-      {day:4, team:1, say:'The third wave lands: the 18th and 115th Infantry.', spawn:'lc*4 4,27-44,28 +inf+eng; lc*2 15,27-30,28 +tank+tank'}]},
+      {day:3, team:1, say:'The 5th Ranger Battalion and the survivors of the 116th break over the bluff west of Les Moulins: "Rangers, lead the way!"', spawn:'inf*3 14,19-20,20'},
+      {day:4, team:1, say:'The third wave lands: the 18th and 115th Infantry.', spawn:'lc*5 4,27-44,28 +inf+eng; lc*2 15,27-30,28 +tank+tank'}]},
 
   pegasus: {name:'Pegasus Bridge', place:'Bénouville, Caen Canal', date:'6 June 1944, 00:16', theme:'normandy', weather:'clear',
     p1:{nat:'uk', co:'monty', funds:0}, p2:{nat:'ger', co:'rommel', funds:2000}, income:{2:.7},

@@ -6,6 +6,7 @@
    runs, dive bombing, flamethrowers, satchel charges, naval gunfire.
    Hit figures fall (infantry) or brew up (vehicles). */
 const BW = 960, BH = 360;
+const BQ = 2;                                           // render quality: the scene is laid out on a 960×360 stage and drawn at twice that (1920×720), models painted at 4× map detail
 const BAT = {parts:[], shake:0};
 function bp(o) { o.t = 0; BAT.parts.push(o); }
 function drawBackdrop(g, X, ter, theme, weather, side) {
@@ -55,10 +56,11 @@ function slotPos(i, n, side, air) {
 function battleScene(att, def, res, preAtt, preDef) {
   if (FAST || !SET.battle) return Promise.resolve();
   return new Promise(done => {
-    const wrap = $('#battlewrap'); wrap.hidden = false; bcv.width = BW; bcv.height = BH; BAT.parts = [];
+    const wrap = $('#battlewrap'); wrap.hidden = false; bcv.width = BW * BQ; bcv.height = BH * BQ; BAT.parts = [];
     const counter = res.counter > 0 || res.cKilled; let dur = counter ? 4600 : 3000, skip = false;
     const t0 = BAT.t0 = performance.now();
-    const fin = () => { wrap.hidden = true; wrap.onclick = null; done(); };
+    const fin = () => { wrap.hidden = true; wrap.onclick = null; musicDuck(false); done(); };
+    musicDuck(true);
     wrap.onclick = () => { skip = true; };
     const mk = (u, side, hp0, hp1) => {
       const n0 = Math.max(1, Math.ceil(hp0 / 20)), n1 = Math.max(0, Math.ceil(Math.max(0, hp1) / 20));
@@ -76,7 +78,7 @@ function battleScene(att, def, res, preAtt, preDef) {
     plan(D, 450 + hitA + 500, A.cls); if (counter) plan(A, cAt + hitD + 500, D.cls);
     dur = counter ? cAt + hitD + 1700 : 450 + hitA + 1700;
     if (D.n1 < D.n0 && !counter) dur += 700; if (counter && A.n1 < A.n0) dur += 900;     // time for the falls to finish and the wrecks to burn
-    const bg = mkCanvas(BW, BH), bgg = bg.getContext('2d'); drawBackdrop(bgg, 0, A.ter, G.theme, G.weather, 1); drawBackdrop(bgg, BW / 2, D.ter, G.theme, G.weather, 2);
+    const bg = mkCanvas(BW * BQ, BH * BQ), bgg = bg.getContext('2d'); bgg.scale(BQ, BQ); drawBackdrop(bgg, 0, A.ter, G.theme, G.weather, 1); drawBackdrop(bgg, BW / 2, D.ter, G.theme, G.weather, 2);
     const fired = {a:false, c:false};
     let last = performance.now();
     const step = () => {
@@ -84,13 +86,13 @@ function battleScene(att, def, res, preAtt, preDef) {
       if (skip || k > dur) return fin();
       if (!fired.a && k > 450) { fired.a = true; fireVolley(A, D, 0); sayIn(A, 'atk'); }
       if (counter && !fired.c && k > cAt) { fired.c = true; fireVolley(D, A, 0); if (Math.random() < .6) sayIn(D, 'atk'); }
-      const g = bctx; g.setTransform(1, 0, 0, 1, 0, 0);
-      const sh = BAT.shake * (Math.random() - .5); BAT.shake *= .9; g.setTransform(1, 0, 0, 1, sh, sh * .6);
-      g.drawImage(bg, 0, 0); g.imageSmoothingEnabled = false;
+      const g = bctx; g.setTransform(BQ, 0, 0, BQ, 0, 0);
+      const sh = BAT.shake * (Math.random() - .5); BAT.shake *= .9; g.setTransform(BQ, 0, 0, BQ, sh * BQ, sh * .6 * BQ);
+      g.drawImage(bg, 0, 0, BW, BH); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';   // the 4× models are drawn slightly smaller than painted: filtered, they stay crisp
       for (const S of [A, D]) drawSide(g, S, k, now);
       updateBattleParts(g, dt);
       // panel labels
-      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.setTransform(BQ, 0, 0, BQ, 0, 0);
       for (const S of [A, D]) {
         const X = S.side ? BW / 2 + 12 : 12, hpNow = S.figs.filter(f => f.alive).length;
         g.fillStyle = 'rgba(10,10,8,.72)'; g.fillRect(X, 10, 300, 58);
@@ -148,6 +150,16 @@ function sayIn(S, kind, f) {
   bp({k:'say', x:p.x + 32 * p.s, y:p.y + 4, text, side:S.side, life:1.5});
   babble(S.nat + f.i, text, {gain:.5, max:1.3, quick:true, zed:S.nat === 'zed', pitch:S.u.d.foot ? 1.05 : .95});
 }
+/* graphic gore only: a man caught by the shell burst comes apart. Torso, legs and an arm in his own uniform, his helmet, a burst of blood */
+function spawnGibs(nat, X, Y, size, away) {
+  const N = NATION[nat] || {}, uni = N.uniform || '#5a5a40', dark = shade(uni, -.25), skin = N.skin || '#dba985', s = size / 64, base = {g:900, s, life:3.2};
+  const piece = (w, h, col, end, up) => bp({k:'gib', ...base, x:X + rnd(-6, 6) * s, y:Y - up * s, vx:away * rnd(40, 240) + rnd(-80, 80), vy:-rnd(220, 460), floor:Y + rnd(-3, 9) * s, spin:rnd(-16, 16), w, h, col, end});
+  piece(9, 12, uni, dark, 26);                      // torso
+  piece(4, 13, dark, '#2a241c', 12); piece(4, 13, dark, '#2a241c', 12);   // legs and boots
+  piece(3.4, 10, uni, skin, 24);                    // an arm
+  bp({k:'helmet', x:X, y:Y - 40 * s, vx:away * rnd(40, 160), vy:-rnd(260, 400), g:800, floor:Y + 4 * s, spin:rnd(-18, 18), s, life:3});
+  bpBloodDir(X, Y - 20 * s, 30, away); bpBlood(X, Y - 14 * s, 12); bpDust(X, Y, 6);
+}
 function dieFig(S, f, now, frame, img) {
   f.alive = false; f.deadT = now; f.deadFrame = frame;
   const left = S.figs.filter(x => x.alive);
@@ -159,7 +171,7 @@ function dieFig(S, f, now, frame, img) {
   if (S.u.d.foot) {
     f.landMs = LAND[f.death] || 520;
     const sq = squadOf(S);                              // the squad breaks into its men, and each falls his own way
-    if (sq) f.men = sq.pos.map(([mx, my]) => { const d = f.death === 'blast' ? (Math.random() < .7 ? 'blast' : 'back') : ['back', 'back', 'drop', 'spin', 'kneel'][Math.random() * 5 | 0];
+    if (sq) f.men = sq.pos.map(([mx, my]) => { const d = f.death === 'blast' ? (goreLevel() > 1 && Math.random() < .35 ? 'gib' : Math.random() < .7 ? 'blast' : 'back') : ['back', 'back', 'drop', 'spin', 'kneel'][Math.random() * 5 | 0];   // graphic gore: a shell can take a man apart
       return {ox:mx - sq.solo[0], oy:my - sq.solo[1], solo:sq.solo, death:d, delay:Math.random() * 260}; });
     bpBloodDir(c.x, c.y - 16, f.death === 'blast' ? 34 : 18, away);
     if (f.death !== 'blast' && Math.random() < .5) bp({k:'helmet', x:c.x - away * 4, y:c.y - 40 * p.s, vx:away * rnd(30, 100), vy:-rnd(140, 240), g:800, floor:c.y + 6, spin:rnd(-14, 14), s:p.s, life:2.6});
@@ -186,21 +198,27 @@ function drawSide(g, S, k, now) {
     if (f.doomed && f.alive && f.dieAt == null && k > f.deadline) f.dieAt = k;     // a round the volley never landed on him: he goes down anyway
     const dead = f.dieAt != null && k > f.dieAt;
     if (!f.alive && f.deadFrame != null) frame = f.deadFrame;
-    const img = getSprite(S.nat, S.u.role, frame, false, G.theme === 'winter' ? 'w' : '');
+    const img = getSprite(S.nat, S.u.role, frame, false, G.theme === 'winter' ? 'w' : '', 2 * BQ);
     if (dead && f.alive) dieFig(S, f, now, frame, img);
     const rec = f.recoil || 0; f.recoil = f.recoil > 0 ? Math.max(0, f.recoil - 1.2) : Math.min(0, f.recoil + 1.4);   // negative recoil: a lunge forward
     g.save();
     let x = p.x + (S.side ? rec : -rec), y = p.y + (S.air ? Math.sin(now / 260 + f.i) * 6 : 0);
     if (f.alive && f.hitT && now - f.hitT < 180) { const q = 1 - (now - f.hitT) / 180; x += (S.side ? 1 : -1) * 4 * q; y += 2 * q; }   // flinching under fire
+    if (f.alive && foot) { x += Math.sin(now / 430 + f.rnd * 9) * 1.3 * p.s; y += Math.sin(now / 610 + f.rnd * 5) * .6 * p.s; }       // men shifting their weight, breathing
+    else if (f.alive && ground && !S.u.d.fixed) {                                                                                     // an engine idling: the hull trembles, exhaust puffs from the back deck
+      y += (Math.random() - .5) * .9 * p.s;
+      if (Math.random() < .07 && !GUNS[S.u.d.shape]) bp({k:'smoke', x:x + (S.side ? size * .88 : size * .12), y:y + size * .5, vx:(S.side ? 1 : -1) * rnd(8, 20), vy:-rnd(8, 20), size:3 * p.s, grow:14, shade:.75, life:rnd(.8, 1.3)});
+    }
     const e = dead ? now - f.deadT : 0, away = S.side ? 1 : -1;
     if (!S.air && !(dead && foot)) { g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + size / 2, y + size * .9, size * .38, size * .07, 0, 0, 7); g.fill(); }
     let hull = false;
     if (dead && foot && f.men) {                       // each man of the squad, drawn alone: standing a moment, then falling his own way
-      const one = getSprite(S.nat, S.u.role, f.deadFrame, false, (G.theme === 'winter' ? 'w' : '') + '1'), u = size / 32;
+      const one = getSprite(S.nat, S.u.role, f.deadFrame, false, (G.theme === 'winter' ? 'w' : '') + '1', 2 * BQ), u = size / 32;
       for (const m of f.men) {
         const e2 = e - m.delay, P = e2 > 0 ? pose(m.death, e2, away) : {ang:0, dx:0, dy:0, sx:1, sy:1}, land = LAND[m.death] || 520;
         const px0 = (m.solo[0] + 4) * u, px = S.side ? size - px0 : px0, py = (m.solo[1] + 14) * u;      // his feet, in the one-man sprite
         const X = x + (S.side ? -m.ox : m.ox) * u + px, Y = y + m.oy * u + py;
+        if (m.death === 'gib' && e2 > 0) { if (!m.gibbed) { m.gibbed = true; spawnGibs(S.nat, X, Y, size, away); } continue; }   // nothing left standing
         if (!m.landed && e2 > land) { m.landed = true; bpDust(X + P.dx, Y, 3); }
         if (P.dy > -4) { g.fillStyle = 'rgba(0,0,0,.22)'; g.beginPath(); g.ellipse(X + P.dx, Y + 1, size * .14, size * .035, 0, 0, 7); g.fill(); }
         if (goreLevel() && m.landed) { const pk = Math.min(1, (e2 - land) / 900); g.fillStyle = 'rgba(90,8,6,.75)'; g.beginPath(); g.ellipse(X + P.dx + away * size * .16, Y + 2, size * .03 + pk * size * .1, size * .012 + pk * size * .03, 0, 0, 7); g.fill(); }
@@ -269,6 +287,7 @@ function fireVolley(S, T, delay) {
       case 'smallarms': {
         const rate = snd === 'mg42' || S.u.role === 'nest' ? 26 : snd === 'ppsh' ? 20 : snd === 'garand' ? 8 : 12;
         for (let i = 0; i < rate; i++) later(stg + i * (900 / rate), () => { bpFlash(m.x, m.y, 10 * m.s); const tf = pick(), h = hitPt(tf); bpTracer(m.x, m.y, h.x + rnd(-20, 20), h.y + rnd(-14, 14));
+          if (Math.random() < .35) bp({k:'brass', x:m.x - m.dir * 10 * m.s, y:m.y - 2, vx:-m.dir * rnd(30, 90), vy:-rnd(90, 170), g:900, floor:m.y + 28 * m.s, spin:rnd(-25, 25), s:m.s, life:.9});   // a spent case spinning out of the breech
           if (armour) { if (Math.random() < .55) { bpSparks(h.x + rnd(-18, 18), h.y + rnd(-14, 6), 4); if ((T.rico = (T.rico || 0) + 1) <= 6 && Math.random() < .6) sfxNow('rico'); strike(tf, .15); } }   // rounds whining off the armour
           else if (Math.random() < .5) { if (T.u.d.foot && Math.random() < .5) { bpBlood(h.x + rnd(-16, 16), h.y + rnd(-10, 10), 3); if (tf.alive) tf.hitT = performance.now(); strike(tf, .35); } else bpDust(h.x + rnd(-24, 24), h.y + 26, 1); } });
         break; }
@@ -339,7 +358,7 @@ function updateBattleParts(g, dt) {
       case 'debris': g.fillStyle = `rgba(50,40,32,${1 - k})`; g.fillRect(p.x, p.y, p.size, p.size); break;
       case 'goo': g.fillStyle = `rgba(160,210,60,${1 - k})`; g.fillRect(p.x, p.y, p.size, p.size); break;
       case 'blood': g.fillStyle = `rgba(${130 - 50 * k | 0},10,8,${1 - k * .3})`; g.fillRect(p.x, p.y, p.size, p.size); break;
-      case 'bailout': { const img = getSprite(p.nat, 'inf', Math.floor(p.t * 10) % 8, false, (G.theme === 'winter' ? 'w' : '') + '1'), s = 46; g.save(); g.globalAlpha = 1 - Math.max(0, k - .7) * 3; if (p.vx < 0) { g.translate(p.x + s, p.y - s); g.scale(-1, 1); g.drawImage(img, 0, 0, s, s); } else g.drawImage(img, p.x, p.y - s, s, s); g.restore(); if (p.burn && Math.random() < .6) bpFire(p.x + s / 2, p.y - s / 2, 1); break; }
+      case 'bailout': { const img = getSprite(p.nat, 'inf', Math.floor(p.t * 10) % 8, false, (G.theme === 'winter' ? 'w' : '') + '1', 2 * BQ), s = 46; g.save(); g.globalAlpha = 1 - Math.max(0, k - .7) * 3; if (p.vx < 0) { g.translate(p.x + s, p.y - s); g.scale(-1, 1); g.drawImage(img, 0, 0, s, s); } else g.drawImage(img, p.x, p.y - s, s, s); g.restore(); if (p.burn && Math.random() < .6) bpFire(p.x + s / 2, p.y - s / 2, 1); break; }
       case 'fire': { g.globalCompositeOperation = 'lighter'; g.fillStyle = `rgba(255,${Math.round(200 - 140 * k)},60,${1 - k})`; g.beginPath(); g.arc(p.x, p.y, p.size * (1 - k * .5), 0, 7); g.fill(); g.globalCompositeOperation = 'source-over'; break; }
       case 'ring': g.strokeStyle = `rgba(220,200,160,${(1 - k) * .7})`; g.lineWidth = 3; g.beginPath(); g.ellipse(p.x, p.y, p.size + p.grow * k, (p.size + p.grow * k) * .3, 0, 0, 7); g.stroke(); break;
       case 'rocket': case 'arcp': {
@@ -355,10 +374,13 @@ function updateBattleParts(g, dt) {
         g.fillStyle = '#f4efe0'; g.strokeStyle = '#1a1814'; g.lineWidth = 2; g.beginPath(); g.roundRect(bx, by, w, h, 7); g.fill(); g.stroke();
         g.beginPath(); g.moveTo(p.x - 6, by + h - 1); g.lineTo(p.x + (p.side ? 7 : -7), by + h + 10); g.lineTo(p.x + 6, by + h - 1); g.fill(); g.stroke(); g.fillRect(p.x - 5, by + h - 3, 10, 3);
         g.fillStyle = '#1a1814'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(p.text, bx + w / 2, by + h / 2 + 1); g.restore(); break; }
-      case 'turret': case 'helmet': {                   // a turret blown off its ring, or a helmet knocked off: thrown, tumbling, bouncing to rest
-        if (p.y > p.floor) { p.y = p.floor; p.vy *= -.28; p.vx *= .5; p.spin *= .4; if (p.k === 'turret' && !p.thud) { p.thud = 1; bpDust(p.x, p.y, 8); BAT.shake = Math.max(BAT.shake, 6); sfxNow('thud'); } }
+      case 'turret': case 'helmet': case 'brass': case 'gib': {   // a turret blown off its ring, a helmet knocked off, a spent case, a piece of a man: thrown, tumbling, bouncing to rest
+        if (p.y > p.floor) { p.y = p.floor; p.vy *= -.28; p.vx *= .5; p.spin *= .4; if (p.k === 'turret' && !p.thud) { p.thud = 1; bpDust(p.x, p.y, 8); BAT.shake = Math.max(BAT.shake, 6); sfxNow('thud'); } if (p.k === 'gib' && !p.splat) { p.splat = 1; bpBlood(p.x, p.y, 4); } }
         p.rot = (p.rot || 0) + p.spin * dt; const a = Math.min(1, (1 - k) * 4);
+        if (p.k === 'gib' && p.y < p.floor - 2 && Math.random() < .5) bp({k:'blood', x:p.x, y:p.y, vx:rnd(-20, 20), vy:rnd(-10, 30), g:600, size:rnd(1.5, 3), life:.5});   // a trail of blood behind it
         g.save(); g.translate(p.x, p.y); g.rotate(p.rot); g.globalAlpha = a;
+        if (p.k === 'brass') { g.fillStyle = '#d0a848'; g.fillRect(-2 * p.s, -.8 * p.s, 4 * p.s, 1.6 * p.s); g.restore(); break; }
+        if (p.k === 'gib') { const w = p.w * p.s, h = p.h * p.s; g.fillStyle = p.col; g.fillRect(-w / 2, -h / 2, w, h); g.fillStyle = p.end; g.fillRect(-w / 2, h / 2 - Math.min(h * .3, 4 * p.s), w, Math.min(h * .3, 4 * p.s)); g.fillStyle = '#7a0c08'; g.fillRect(-w / 2, -h / 2, w, Math.max(1.5, h * .14)); g.restore(); break; }
         if (p.k === 'turret') { if (Math.random() < .6 && k < .6) bp({k:'smoke', x:p.x, y:p.y, vx:0, vy:-10, size:5, grow:18, shade:.9, life:.9}); if (p.flip) g.scale(-1, 1); g.filter = 'brightness(.4) sepia(.4)'; g.drawImage(p.img, 0, p.sy, p.iw, p.sh, -p.dw / 2, -p.dh / 2, p.dw, p.dh); }
         else { g.fillStyle = '#4f5a3e'; g.beginPath(); g.ellipse(0, 0, 7 * p.s, 4.5 * p.s, 0, Math.PI, 0); g.fill(); g.fillRect(-8 * p.s, -.5, 16 * p.s, 2); }
         g.restore(); break; }

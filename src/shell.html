@@ -9,29 +9,34 @@
 
 <!-- title -->
 <section class="screen" id="title">
-  <canvas id="titlecv"></canvas>
-  <div class="logo"><h1>BIT<span>-</span>ZKRIEG</h1><h2 class="logosub">IRON FRONT <span>’44</span></h2><p>Shanghai to Berlin, El Alamein to the Rhine · 1937–1945</p></div>
+  <div class="hero"><canvas id="titlecv"></canvas>
+    <div class="logo"><h1><i>B</i><i>I</i><i>T</i><span>-</span><i>Z</i><i>K</i><i>R</i><i>I</i><i>E</i><i>G</i></h1><h2 class="logosub">IRON FRONT <span>’44</span></h2><p>Shanghai to Berlin, El Alamein to the Rhine · 1937–1945</p></div>
+  </div>
   <nav class="mainmenu">
-    <button id="continue" hidden>Continue</button>
-    <button id="bcampaign">Campaigns</button>
-    <button id="bwarmap">War Map</button>
-    <button id="bskirmish">Skirmish</button>
-    <button id="bwaves">Last Stand</button>
-    <button id="bzed" class="zedbtn">Dead of Night</button>
-    <button id="beditor">Map Builder</button>
-    <button id="bmulti">Multiplayer</button>
-    <button id="barmoury">Archive</button>
-    <button id="brecord">Service Record</button>
-    <button id="bjukebox">Jukebox</button>
-    <button id="bhelp">Field manual</button>
-    <button id="bsettings">Settings</button>
-    <button id="bcredits" class="ghost">Credits</button>
+    <div class="primary"><button id="continue" hidden>Continue</button><button id="bcampaign">Campaigns</button></div>
+    <div class="modes">
+      <button id="bwarmap">War Map</button>
+      <button id="bskirmish">Skirmish</button>
+      <button id="bwaves">Last Stand</button>
+      <button id="bzed" class="zedbtn">Dead of Night</button>
+      <button id="beditor">Map Builder</button>
+      <button id="bmulti">Multiplayer</button>
+    </div>
+    <div class="util">
+      <button id="barmoury">Archive</button>
+      <button id="brecord">Service Record</button>
+      <button id="bjukebox">Jukebox</button>
+      <button id="bhelp">Field manual</button>
+      <button id="bsettings">Settings</button>
+      <button id="bcredits">Credits</button>
+    </div>
   </nav>
+  <div id="titlemusic"><span class="note">♪</span><span id="tmnow">Music</span><button id="tmnext" title="Next piece">Next ›</button><button id="tmmute" title="Music on or off">On / off</button></div>
 </section>
 
 <!-- campaigns -->
 <section class="screen paper" id="campaigns" hidden>
-  <header><h2>Campaigns</h2><p>Sixty-six battles in eleven campaigns, from Shanghai in 1937 through the Western Desert to Berlin in 1945, plus basic training. Veterans who survive carry on into the next fight.</p></header>
+  <header><h2>Campaigns</h2><p>Eighty-two battles in thirteen campaigns, from Shanghai in 1937 through the Western Desert, Greece and Italy and the carrier war in the Pacific to Berlin in 1945, plus basic training. Veterans who survive carry on into the next fight.</p></header>
   <div id="camplist"></div>
   <header class="sub"><h3>Core force</h3></header>
   <div id="corelist"></div>
@@ -177,7 +182,7 @@
 <section class="screen paper" id="help" hidden>
   <header><h2>Field manual</h2></header>
   <div class="manual">
-    <p><b>Orders.</b> Click a unit, then click where it should go. Choose <i>Fire</i>, <i>Capture</i>, <i>Clear obstacles</i>, <i>Unload</i> or <i>Wait</i>. Right-click or Esc steps back. Arrow keys and Enter work too; E ends the turn, M toggles the minimap, H asks your adviser for a suggested move. Click an enemy (or press R) to see what it can reach; press T, or the Danger button, to shade every tile any visible enemy could attack next turn. Drag to pan, scroll to zoom.</p>
+    <p><b>Orders.</b> Click a unit, then click where it should go. Choose <i>Fire</i>, <i>Capture</i>, <i>Clear obstacles</i>, <i>Unload</i> or <i>Wait</i>. Right-click or Esc steps back. Arrow keys and Enter work too; E ends the turn, M toggles the minimap, H asks your adviser for a suggested move. Click an enemy (or press R) to see what it can reach; press T, or the Danger button, to shade every tile any visible enemy could attack next turn. N (or Next) picks up the next unit you have not used; U (or Mine) rings your units in gold and the enemy's in red. Hover an enemy with a unit selected to see the damage forecast: what you will do, what you will take back, and why. Drag to pan, scroll to zoom.</p>
     <p><b>Terrain.</b> Stars are cover. Bocage hedgerows (3★) are miserable for tanks and wonderful for infantry. Bunkers give 4★, trenches 3★. Beaches, roads and marsh give none. Boats cannot pass beach obstacles; tanks crush wire but not hedgehogs. A unit that stops in a minefield loses 2–3 HP.</p>
     <p><b>Engineers.</b> Combat engineers blow lanes through obstacles, wire and minefields next to them, and their flamethrowers and charges are deadly against bunkers.</p>
     <p><b>Fixed defences.</b> MG 42 nests and 88 mm casemates never move. Hit them with artillery, naval gunfire, engineers and aircraft rather than walking into them.</p>
@@ -188,7 +193,7 @@
     <p><b>Time.</b> Each turn is a slice of the real battle: an hour on Omaha, four hours at Pegasus Bridge, a day at Bastogne. Nights darken the map: aircraft are grounded and you see only what your units can see. Some missions have fog of war all the time.</p>
     <p><b>Digging in, weather and bridges.</b> Infantry and guns that hold position for a turn dig in for an extra star of cover. Snow slows vehicles off the roads; rain makes mud for wheels. Engineers can blow a bridge or build a Bailey bridge over a river for 3,000.</p>
     <p><b>Controllers.</b> D-pad or left stick moves, A selects, B cancels, X opens the general's menu, Y shows a unit's range (on empty ground, the whole danger zone), LB/RB jump between units still to move, triggers zoom, the right stick pans, Start ends the turn. Tab cycles units on the keyboard.</p>
-    <p><b>The war at sea.</b> Submerged U-boats are invisible until an escort's asdic finds them within two squares, an aircraft passes overhead or any ship comes alongside. A U-boat that fires gives itself away until its next turn. Escorts (corvettes, sloops and destroyer escorts) and torpedo bombers are the U-boat killers. Battleships fire 2–7 squares; carriers launch air strikes up to 8 squares away, but not at night. Convoys win by getting enough merchant ships to the far edge.</p>
+    <p><b>The war at sea.</b> Submerged U-boats are invisible until an escort's asdic finds them within two squares, an aircraft passes overhead or any ship comes alongside. A U-boat that fires gives itself away until its next turn. Escorts (corvettes, sloops and destroyer escorts) and torpedo bombers are the U-boat killers. Battleships fire 2–7 squares; carriers launch air strikes up to 8 squares away, but not at night, unless the crews were trained for it, like the Swordfish at Taranto. Convoys win by getting enough merchant ships to the far edge.</p>
     <p><b>Jungle, paddies and reefs.</b> Jungle hides infantry and stops wheels; rice paddies give no cover. Landing craft ground on coral reefs: infantry must wade, but amtracs crawl over.</p>
     <p><b>Generals' temperaments.</b> The computer plays each general in character: Rommel, Patton and Yamashita attack hard; Model, Heinrici and Kuribayashi stay in cover and make you come to them; opportunists like Manstein and Chuikov grab towns and pick off stragglers.</p>
     <p><b>Last Stand.</b> Hold your HQ against endless waves, each bigger than the last, with veterans, then armour, then aircraft. Supplies arrive with every wave; build reinforcements at your depots. Your best on every map is kept.</p>
@@ -275,7 +280,7 @@
   <div id="bottom">
     <div id="tinfo"></div>
     <div id="uinfo" hidden></div>
-    <div class="acts"><button id="ffwd" hidden title="Speed up the enemy turn">»</button><button id="cop" hidden></button><button id="scop" hidden></button><button id="danger" title="Danger zone: show every tile the enemy can hit next turn (T)" aria-pressed="false">Danger</button><button id="endturn">End turn</button><button id="quit" class="ghost">Menu</button></div>
+    <div class="acts"><button id="ffwd" hidden title="Speed up the enemy turn">»</button><button id="cop" hidden></button><button id="scop" hidden></button><button id="nextu" title="Pick up the next unit you have not used yet (Tab)">Next</button><button id="mine" title="Highlight your own units: gold rings on yours, red on the enemy's (U)" aria-pressed="false">Mine</button><button id="danger" title="Danger zone: show every tile the enemy can hit next turn (T)" aria-pressed="false">Danger</button><button id="endturn">End turn</button><button id="quit" class="ghost">Menu</button></div>
   </div>
   <div id="forecast" hidden></div>
 </section>

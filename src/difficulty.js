@@ -68,3 +68,7 @@ Object.assign(DIFFICULTY, {
   halfaya:0.75,
   tobruk42:0.88
 });
+/* Italy at War, from reports/italy6.txt after the final balancing pass */
+Object.assign(DIFFICULTY, {pindus:0.6, keren:0.85, birelgubi:0.6, folgore:0.8, gorgopotamos:0.35, gela43:0.6, montelungo:0.6, filottrano:0.4});
+/* The Carrier War, from reports/carrier1.txt and carrier3.txt and 20-game samples after the final balancing pass */
+Object.assign(DIFFICULTY, {taranto:0.4, coralsea:0.45, eastsolomons:0.5, santacruz:0.65, tungsten:0.5, philsea:0.55, engano:0.6, tengo:0.5});

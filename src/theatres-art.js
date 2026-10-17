@@ -283,7 +283,12 @@ const TUNIC_EXTRA = {
   pl(P, L, tunic) { P.R(17, 33, 14, 4, shade(tunic, -.06)); for (const sx of [15.5, 27.5]) { P.R(sx, 34.4, 5, 2.4, '#3a3a2a'); for (let i = 0; i < 4; i++) P.line(sx + i * 1.2, 35, sx + .6 + i * 1.2, 36.4, '#d0d0c8', .3); } for (let i = 0; i < 4; i++) P.circ(24, 39 + i * 2.4, .55, '#c8c8c0'); P.R(37, 40, 3, 4, '#c8c8c0'); },
 };
 const capPeak = (P, crown, band, peak = '#141414') => { P.ell(24, 9, 14, 5, crown); P.R(13, 9, 22, 4, crown); P.ell(20, 7.5, 6, 2, shade(crown, .12)); P.R(14, 12, 20, 3, band); P.poly([[13, 15], [35, 15], [32, 18], [16, 18]], peak); P.R(17, 15.4, 12, .6, '#4a4a4a'); };
-const faceExtras = (P, L) => { if (L.moustache) P.R(20.5, 26.2, 7, 1.3, shade(L.hair === '#e8bc98' ? '#6a5a48' : L.hair, -.05)); if (L.teeth) P.R(22.4, 28.2, 3.4, .7, '#f0ece0'); };
+const faceExtras = (P, L) => {                       // the moustache sits between this face's nose and mouth (drawFace leaves them in FACE_AT)
+  const f = typeof FACE_AT !== 'undefined' && FACE_AT.my ? FACE_AT : {nt:25.4, my:28, mw:6}, col = shade(L.hair === '#e8bc98' ? '#6a5a48' : L.hair, -.05);
+  // a broad soldier's moustache, never a toothbrush
+  if (L.moustache) { const w = Math.max(6.6, Math.min(9, f.mw + 2.4)), y = f.nt + 1, h = Math.max(1.1, f.my - y - .1); P.R(24 - w / 2, y, w, h, col); P.R(24 - w / 2 - .4, y + h - .5, .8, .6, col); P.R(24 + w / 2 - .4, y + h - .5, .8, .6, col); P.R(24 - w / 2 + .6, y, w - 1.2, .4, shade(col, .15)); }
+  if (L.teeth) P.R(22.4, f.my + .2, 3.4, .7, '#f0ece0');
+};
 const CAP_EXTRA = {
   navy(P, L) {
     capPeak(P, L.crown || '#f0f0ea', '#1a1a1a');

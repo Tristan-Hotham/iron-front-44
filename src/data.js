@@ -32,16 +32,17 @@ const TER = {
   marsh:  {n:'Flooded marsh', def:0, mv:{foot:2, boot:2, air:1}, info:'Fields flooded by the Germans, or Pripyat bog. Only infantry wade through.'},
   block:  {n:'City blocks', def:2, mv:{foot:1, boot:1, tread:2, tire:2, air:1}, info:'Apartment blocks and shops. Good cover; armour has to grind through the streets.'},
   field:  {n:'Wheat field', def:1, mv:{foot:1, boot:1, tread:1, tire:2, air:1}, info:'Open farmland. No cover worth the name.'},
+  shallows:{n:'Shallows', def:0, mv:{foot:2, boot:2, tread:2, air:1}, mm:'#5a8aa8', info:'Neck-deep water over the sandbars. The landing craft ground here and the men wade in under fire, heavily laden, at a walk. No cover at all.'},
 };
 for (const t of Object.values(TER)) {                 // DD tanks swim: tracked on land, slow in water
   const m = t.mv; if (m.tread) m.amphib = m.tread;
 }
-TER.sea.mv.amphib = 2; TER.river.mv.amphib = 2; TER.beach.mv.amphib = 1; TER.obst.mv.amphib = 0;
+TER.sea.mv.amphib = 2; TER.river.mv.amphib = 2; TER.beach.mv.amphib = 1; TER.obst.mv.amphib = 0; TER.shallows.mv.amphib = 1;
 /* map characters. Properties: lowercase/uppercase/alternate letter = neutral / side 1 / side 2 */
 const MAPCH = {
   '.':['plain'], '=':['road'], 'T':['forest'], 'h':['bocage'], '^':['hill'], 'r':['river'], 'b':['bridge'],
   '~':['sea'], 's':['beach'], 'B':['bunker'], 'x':['ruins'],
-  'O':['obst'], 'n':['shingle'], 'w':['wire'], 'm':['mines'], 'u':['cliff'], 'z':['trench'], 'v':['marsh'], ',':['field'], 'U':['block'],
+  'O':['obst'], 'n':['shingle'], 'S':['shallows'], 'w':['wire'], 'm':['mines'], 'u':['cliff'], 'z':['trench'], 'v':['marsh'], ',':['field'], 'U':['block'],
   'c':['city',0], 'C':['city',1], 'k':['city',2],
   'f':['fact',0], 'F':['fact',1], 'g':['fact',2],
   'a':['air',0],  'A':['air',1],  'e':['air',2],
@@ -76,7 +77,7 @@ const MAKES = {ground:['inf','eng','at','mortar','recon','apc','tank','ddtank','
 
 /* base damage (% of a full-strength defender) by attacker role -> defender role */
 const DMG = {
-  inf:   {inf:55, at:45, recon:12, apc:14, tank:5,  mtank:1,  htank:1,  art:15, rkt:25, aa:5},
+  inf:   {inf:55, at:45, recon:12, apc:14, tank:5,  mtank:1,  htank:1,  art:35, rkt:45, aa:5},     // gun crews in the open are easy meat for riflemen who get close
   at:    {inf:65, at:55, recon:85, apc:75, tank:55, mtank:45, htank:35, art:70, rkt:85, aa:65},
   recon: {inf:70, at:65, recon:35, apc:45, tank:6,  mtank:1,  htank:1,  art:45, rkt:55, aa:4},
   apc:   {inf:20, at:18},
@@ -89,7 +90,7 @@ const DMG = {
   ftr:   {inf:25, at:25, recon:20, apc:20, art:25, rkt:25, ftr:55, bmr:100},
   bmr:   {inf:110,at:110,recon:105,apc:105,tank:95, mtank:75, htank:60, art:105,rkt:105,aa:35, lc:85, dd:55},
   dd:    {inf:75, at:70, recon:70, apc:70, tank:60, mtank:50, htank:45, art:65, rkt:70, aa:65, lc:95, dd:55},
-  eng:   {inf:50, at:45, recon:12, apc:14, tank:8, mtank:4, htank:3, art:20, rkt:28, aa:8, nest:48, pak:42},   // flamethrowers and pole charges
+  eng:   {inf:50, at:45, recon:12, apc:14, tank:8, mtank:4, htank:3, art:40, rkt:48, aa:8, nest:48, pak:42},   // flamethrowers and pole charges
   mortar:{inf:75, at:70, recon:35, apc:30, tank:12, mtank:6, htank:5, art:55, rkt:60, aa:30, nest:30, pak:25},
   nest:  {inf:100, at:90, recon:35, apc:35, tank:4, mtank:1, htank:1, art:45, rkt:55, aa:12, lc:30},
   pak:   {inf:40, at:38, recon:125, apc:125, tank:115, mtank:100, htank:85, art:105, rkt:115, aa:115, lc:95, dd:25},

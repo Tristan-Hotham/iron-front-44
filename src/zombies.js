@@ -214,7 +214,7 @@ function launchZombies() {
   else if (v.startsWith('m:')) { const m = MISSIONS[v.slice(2)]; rows = missionMap(m); theme = m.theme; }
   else { const s = edSaved()[v.slice(2)]; if (!s) return; rows = s.rows; theme = s.theme; }
   const cfg = wavesCfg({rows, theme, nat, co:f.querySelector('#zco').value, enemy:'zed', eco:'horde', diff:f.querySelector('#zdiff').value, funds:Math.max(0, Math.min(200000, +f.querySelector('#zfunds').value || 0)), every:+f.querySelector('#zevery').value, name:'zed:' + v + lsCustomTag(f), force:UI.zForce && UI.zForce()});
-  cfg.waves.zed = true; cfg.waves.night = night; cfg.waves.next = 2;
+  cfg.waves.zed = true; cfg.waves.night = night; cfg.waves.next = 1;                     // the first wave comes on the first night turn
   cfg.clock = {start:cfg.clock.start.slice(0, 11) + (night === 'endless' ? '23:00' : '18:00'), step:120};
   cfg.weather = theme === 'winter' ? 'snow' : night === 'endless' ? 'fog' : cfg.weather;
   G = null; startGame(cfg);

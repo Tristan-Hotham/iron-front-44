@@ -108,6 +108,7 @@ function fmtClock(turn, clock = G && G.clock, long = false) {
 function stepText(step) { return step >= 1440 ? `${step / 1440} day${step > 1440 ? 's' : ''}` : step >= 60 ? `${step / 60} hour${step > 60 ? 's' : ''}` : `${step} minutes`; }
 function hourAt(turn = G && G.day) { const d = clockAt(turn); return d.getHours() + d.getMinutes() / 60; }
 function isNight(turn = G && G.day) { if (G && G.waves && G.waves.night === 'endless') return true; if (!G || G.clock.step >= 1440) return false; const h = hourAt(turn); return h < 5 || h >= 22; }
+const airGrounded = () => isNight() && !(G.mission && G.mission.nightAir);   // night grounds aircraft, except crews trained to attack by flarelight (Taranto)
 /* objective text with real times in place of turn numbers */
 function goalText(m) {
   const c = m.clock, o = m.objective;
@@ -266,13 +267,19 @@ function calcDamage(att, def, attHp = att.hp, luck = 0, ax = att.x, ay = att.y, 
   const atk = (100 + sumGroup(att.team, 'atk', att.d, terr(ax, ay)) + (G.teams[att.team].power ? 10 : 0) + RANKS[rankOf(att)].atk + aiEdge(att.team)) / 100;
   const stars = def.d.air ? 0 : TER[terr(dx, dy)].def + (def.dug && def.x === dx && def.y === dy ? 1 : 0);   // foxholes add a star
   const dco = 100 + sumGroup(def.team, 'def', def.d, terr(dx, dy)) + (G.teams[def.team].power ? 10 : 0) + RANKS[rankOf(def)].def + aiEdge(def.team);
-  const dmg = (b * pow * atk + luck) * (Math.ceil(attHp / 10) / 10) * ((200 - (dco + stars * hpBars(def))) / 100) * def.d.arm;
+  let dmg = (b * pow * atk + luck) * (Math.ceil(attHp / 10) / 10) * ((200 - (dco + stars * hpBars(def))) / 100) * def.d.arm;
+  if (inSmoke(dx, dy) && Math.abs(ax - dx) + Math.abs(ay - dy) > 1) dmg *= .5;        // firing blind into smoke
   return clamp(Math.floor(dmg), 0, 100);
 }
+/* smoke from burning grass or a screen: halves fire into it from more than a tile away (event field smoke:[x0,y0,x1,y1,days]) */
+function inSmoke(x, y) { return !!(G && G.smoke && G.smoke.some(s => G.day <= s.until && x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1)); }
+/* pinned down: on battles that use it, a squad cut to half strength in the open on the beach goes to ground and loses its next move */
+const PIN_GROUND = new Set(['beach', 'shallows', 'obst', 'shingle']);
+function pinCheck(u, before) { if (!G.mission || !G.mission.pin || !u.d.foot || u.hp <= 0 || before <= 50 || u.hp > 50 || !PIN_GROUND.has(terr(u.x, u.y))) return false; u.pinned = true; return true; }
 function inRange(u, x, y, o) { const [a, b] = rangeOf(u), r = Math.abs(o.x - x) + Math.abs(o.y - y); return r >= a && r <= b; }
 function targetsFrom(u, x, y, moved) {
   const [, b] = rangeOf(u); if (!b) return [];
-  if ((u.d.air || u.d.carrier) && isNight()) return [];  // no air strikes in the dark
+  if ((u.d.air || u.d.carrier) && airGrounded()) return [];  // no air strikes in the dark
   if (u.d.indirect && moved) return [];
   return G.units.filter(o => o.team !== u.team && canHit(u, o) && inRange(u, x, y, o) && !subHidden(o, u.team, x, y, u));
 }
@@ -291,18 +298,20 @@ function luckRoll() { return Math.floor(Math.random() * 10); }
 const canCounter = (def, att) => !def.d.indirect && !att.d.indirect && dist(att, def) === 1 && canHit(def, att);
 /* resolves an attack; returns {dmg, counter, killed, cKilled, promo} */
 function attack(att, def, rnd = luckRoll) {
-  const dmg = calcDamage(att, def, att.hp, rnd());
+  const dmg = calcDamage(att, def, att.hp, rnd()), defBefore = def.hp, attBefore = att.hp;
   if (att.d.sub) att.revealed = true;                    // the torpedo tracks point straight back at her
   def.hp -= dmg; charge(att.team, dmg * def.d.cost / 100 * .5); charge(def.team, dmg * def.d.cost / 100);
   G.stats[att.team].dmg += dmg;
   const res = {dmg, counter:0, killed:false, cKilled:false, promo:[]};
   if (def.hp <= 0) { res.killed = true; att.kills = (att.kills || 0) + 1; kill(def, att.team); const p = gainXp(att, dmg + 30); if (p) res.promo.push([att, p]); return res; }
   { const p = gainXp(att, dmg); if (p) res.promo.push([att, p]); }
+  if (pinCheck(def, defBefore)) res.pinned = def;
   if (canCounter(def, att)) {
     const c = calcDamage(def, att, def.hp, rnd());
     att.hp -= c; res.counter = c; charge(def.team, c * att.d.cost / 100 * .5); charge(att.team, c * att.d.cost / 100);
     G.stats[def.team].dmg += c;
     if (att.hp <= 0) { res.cKilled = true; def.kills = (def.kills || 0) + 1; kill(att, def.team); }
+    else if (pinCheck(att, attBefore)) res.pinned = att;
     const p = gainXp(def, c + (res.cKilled ? 30 : 0)); if (p) res.promo.push([def, p]);
   }
   return res;
@@ -436,13 +445,15 @@ function repairs(team) {
 function startTurn(team) {
   G.turn = team; const T = G.teams[team];
   T.power = 0;
-  for (const u of G.units) if (u.team === team) { u.moved = false; u.done = false; u.again = false; u.sx = u.x; u.sy = u.y; u.revealed = false; }
+  const pinned = [];
+  for (const u of G.units) if (u.team === team) { u.moved = false; u.done = false; u.again = false; u.sx = u.x; u.sy = u.y; u.revealed = false;
+    if (u.pinned) { u.pinned = false; u.done = u.moved = true; pinned.push(u); } }                  // pinned down: this turn they stay in the sand
   const gone = G.units.filter(u => u.team === team && u.d.carry && u.d.sea && u.landed && !u.cargo.length);   // empty landing craft go back to the fleet
   if (gone.length) G.units = G.units.filter(u => !gone.includes(u));
   T.funds += income(team);
   if (G.waves && team === 2 && typeof waveTick === 'function') waveTick();
   G.wrecks = G.wrecks.filter(w => G.day - w.day < 4);
-  return {rep:repairs(team)};
+  return {rep:repairs(team), pinned};
 }
 function endTurn() {
   const next = enemyOf(G.turn);
@@ -464,6 +475,8 @@ function runEvent(e) {
   if (e.heal) for (const u of G.units) if (u.team === e.team) u.hp = Math.min(100, u.hp + e.heal * 10);
   if (e.hurt) for (const u of G.units) if (u.team === e.hurtTeam || (!e.hurtTeam && u.team !== e.team)) u.hp = Math.max(10, u.hp - e.hurt * 10);   // frostbite, typhus, an empty ammunition dump
   if (e.clear) for (const [x, y] of e.clear) if (inside(x, y) && TER[terr(x, y)].clear) setTerr(x, y, TER[terr(x, y)].clear);
+  if (e.shock && typeof shellShock === 'function') setTimeout(() => shellShock(e.shock), 900);   // after the banner has been read
+  if (e.smoke) { const [x0, y0, x1, y1, days] = e.smoke; (G.smoke = G.smoke || []).push({x0, y0, x1, y1, until:G.day + days}); }
   return made;
 }
 function nearestFree(role, team, x, y, maxR = 8) {

@@ -18,7 +18,8 @@ const MEDALS = [
 ];
 const CAMPAIGN_MEDAL = {west:['France and Germany Star', '#1c3a8a', '#d42a2a'], east:['Medal for the Capture of Berlin', '#d42a2a', '#e0c050'], axis:['Iron Cross', '#2a2a2a', '#e8e8e0'],
   china:['Medal of Victory in the War of Resistance', '#1c3a9a', '#e8e8e0'], weiss:['Poland Campaign Shield', '#5a5a5a', '#c8a040'], gelb:['Western Campaign Clasp', '#4a4a4a', '#d8d8d0'],
-  sea:['Pacific and Atlantic Star', '#203a78', '#e0c050'], atlantic:['Atlantic Star', '#2a5a8a', '#e8e8e0'], rising:['China Incident Medal', '#c8202a', '#e8e2d0'], pacific:['Asiatic-Pacific Campaign Medal', '#b8803a', '#3060c0'], desert:['The Africa Star', '#c8a060', '#c8202a']};
+  sea:['Pacific and Atlantic Star', '#203a78', '#e0c050'], atlantic:['Atlantic Star', '#2a5a8a', '#e8e8e0'], rising:['China Incident Medal', '#c8202a', '#e8e2d0'], pacific:['Asiatic-Pacific Campaign Medal', '#b8803a', '#3060c0'], desert:['The Africa Star', '#c8a060', '#c8202a'], italy:['Croce al Merito di Guerra', '#1c3a8a', '#e8e8e0'],
+  carrier:['Distinguished Flying Cross', '#1c3a8a', '#c8202a']};
 function stat(p) { return (p.stats = Object.assign({battles:0, wins:0, kills:0, lost:0, subs:0, ships:0, waves:0, maps:0}, p.stats || {})); }
 function award(p, id) { p.medals = p.medals || {}; if (p.medals[id]) return null; p.medals[id] = Date.now(); return id; }
 /* called after every game; returns the medals newly won */

@@ -4,13 +4,13 @@
 
 ![Bit-zkrieg: Iron Front '44](poster.jpg)
 
-A Second World War turn-based tactics game in the Advance Wars mould. There are sixty-six battles in eleven campaigns: Shanghai in 1937, the invasion of Poland, the fall of France, the Desert War from Beda Fomm to Tunis, the Atlantic, Pearl Harbor to Singapore, the Pacific, China's War of Resistance, and Normandy and the Eastern Front through to the Reichstag. Every battle has a historical briefing, the real forces and generals, and an aftermath telling you what actually happened.
+A Second World War turn-based tactics game in the Advance Wars mould. There are eighty-two battles in thirteen campaigns: Shanghai in 1937, the invasion of Poland, the fall of France, the Desert War from Beda Fomm to Tunis, Italy's own war from the Pindus to Filottrano, the Atlantic, the carrier war from Taranto to Ten-Go, Pearl Harbor to Singapore, the Pacific, China's War of Resistance, and Normandy and the Eastern Front through to the Reichstag. Every battle has a historical briefing, the real forces and generals, and an aftermath telling you what actually happened.
 
 ![El Alamein](docs/screens/alamein.png)
 
 ## Modes
 
-- **Campaigns:** eleven campaigns, Allied and Axis, each battle with its history.
+- **Campaigns:** thirteen campaigns, Allied and Axis, each battle with its history.
 - **Skirmish:** random land and island maps, any two armies, and a choice of enemy general.
 - **Last Stand:** hold your HQ against growing waves. You can pick your starting money and troops.
 - **Dead of Night:** zombie wave defence. The dead you kill rise again.

@@ -81,12 +81,15 @@ function musicEl(i) {
   if (!MUSIC.els[i]) { const el = new Audio(); el.preload = 'auto'; el.addEventListener('ended', () => { if (MUSIC.els[MUSIC.cur] === el) { MUSIC.pos[MUSIC.mood] = 0; playNext(); } }); MUSIC.els[i] = el; }
   return MUSIC.els[i];
 }
-function fadeTo(el, vol, ms, then) {
-  const v0 = el.volume, t0 = performance.now();
-  const step = () => { const k = Math.min(1, (performance.now() - t0) / ms); el.volume = clamp(v0 + (vol - v0) * k, 0, 1); if (k < 1) setTimeout(step, 40); else if (then) then(); };
+function fadeTo(el, vol, ms, then) {                  // an eased fade (equal-power when crossfading), cancelled if another fade takes over
+  const v0 = el.volume, t0 = performance.now(), id = el._fade = (el._fade || 0) + 1;
+  const step = () => { if (el._fade !== id) return; const k = Math.min(1, (performance.now() - t0) / ms), e = vol > v0 ? Math.sin(k * Math.PI / 2) : 1 - Math.cos(k * Math.PI / 2);
+    el.volume = clamp(v0 + (vol - v0) * e, 0, 1); if (k < 1) setTimeout(step, 30); else if (then) then(); };
   step();
 }
-const musicVol = () => .45 * SET.vol * (SET.musicVol ?? 1);
+const musicVol = () => .45 * SET.vol * (SET.musicVol ?? 1) * (MUSIC.duck || 1);
+/* the music steps back while a general speaks or a battle is fought, so the voices and the guns come through */
+function musicDuck(on) { MUSIC.duck = on ? .5 : 1; const el = MUSIC.els[MUSIC.cur]; if (el && !el.paused && SET.music) fadeTo(el, musicVol(), on ? 600 : 1600); }
 /* switch to a mood (army, title, night...), resuming that mood's piece where it left off */
 const MOOD_ALIAS = {ger40:'ger', uk40:'uk', su41:'su', usp:'us', fr40:'fr', be:'fr'};   // armies without their own recordings borrow a fitting mood
 function musicMood(mood, force) {
@@ -112,9 +115,10 @@ function playTrack(t, at = 0) {
   if (!SET.music) { MUSIC.els.forEach(e => e && e.pause()); return; }
   const old = MUSIC.els[MUSIC.cur]; MUSIC.cur = 1 - MUSIC.cur;
   const el = musicEl(MUSIC.cur);
-  if (old && !old.paused) fadeTo(old, 0, 1200, () => old.pause());
+  if (old && !old.paused) fadeTo(old, 0, 2600, () => old.pause());                       // a slow crossfade: the old piece sinks as the new one rises
   el.src = 'music/' + t.file; el.volume = 0;
-  const go = () => { try { if (at) el.currentTime = at; } catch (e) {} el.play().then(() => fadeTo(el, musicVol(), 1400)).catch(() => {}); };
+  const go = () => { try { if (at) el.currentTime = at; } catch (e) {} el.play().then(() => fadeTo(el, musicVol(), 3000)).catch(() => {}); };
+  if (typeof titleMusicLabel === 'function') titleMusicLabel();
   if (at) el.addEventListener('loadedmetadata', go, {once:true}); else go();
   const np = document.getElementById('nowplaying'); if (np) { np.textContent = `♪ ${t.title} — ${t.by}`; np.classList.add('show'); setTimeout(() => np.classList.remove('show'), 5000); }
   if (document.body.dataset.screen === 'jukebox') renderJukebox();
