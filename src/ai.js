@@ -102,7 +102,7 @@ function planUnit(u, cache) {
   let best = {score:-1e9};
   const myHQ = Object.values(G.props).find(p => p.owner === team && terr(p.x, p.y) === 'hq');
   const climb = u.d.foot && hasClimb(team);
-  const homing = lowFuel(u);
+  const homing = lowFuel(u), runner = G.objective.win === 'convoy' && team === 1 && u.role === G.objective.role;   // a breakout or a convoy: the runners drive for the exit and do not stop to fight
   const goalKey = u.d.mt + (u.d.foot ? (u.d.cap ? 'F' + u.id : 'f') : 'X') + (u.cargo.length ? 'L' : '') + (u.d.indirect ? 'I' : '') + ':' + (G.objective.role === u.role || G.objective.protect ? u.role : '') + (u.d.sub ? 'S' : '') + (homing ? 'FUEL' : '');
   if (!cache[goalKey]) {
     if (u.d.carry && u.cargo.length) {
@@ -118,7 +118,7 @@ function planUnit(u, cache) {
   if (!(hqKey in cache)) { const e = enemyHQ(team); cache[hqKey] = e.length ? distField(u.d.mt, e.map(p => [p.x, p.y]), climb) : null; }
   const urgency = G.objective.limit && team === 1 ? clamp(G.day / G.objective.limit, 0, 1) : G.objective.win === 'survive' && team === 2 ? clamp(G.day / G.objective.days, 0, 1) : 0;   // whoever is racing the clock presses harder as it runs down   // the closer the deadline, the harder the pull to the HQ
   const hqf = cache[hqKey], hqW = u.d.foot ? .55 : .85, late = urgency ? .7 - .35 * urgency : 1;
-  const fdAt = i => hqf && !u.cargo.length && G.objective.win !== 'kill' && !goalKey.endsWith('FUEL') ? Math.min(field[i], hqf[i] * hqW * late) : field[i];
+  const fdAt = i => hqf && !u.cargo.length && G.objective.win !== 'kill' && !goalKey.endsWith('FUEL') && !(G.objective.win === 'convoy' && team === 1 && u.role === G.objective.role) ?   /* a unit getting out must not be pulled towards the enemy HQ */ Math.min(field[i], hqf[i] * hqW * late) : field[i];
   const cat = u.d.air ? 'ftr' : u.d.sea ? (u.d.sub ? 'sub' : 'dd') : u.d.armour ? (u.role === 'recon' || u.role === 'apc' ? 'recon' : 'tank') : 'inf';
   const thKey = team + ':' + G.day + ':' + G.turn + ':' + G.units.filter(o => o.team !== team).map(o => o.id).join(',');   // enemies do not move during our turn: reuse until one dies
   if (TH_CACHE.key !== thKey || TH_CACHE.g !== G) { TH_CACHE.key = thKey; TH_CACHE.g = G; TH_CACHE.maps = {}; }
@@ -147,7 +147,7 @@ function planUnit(u, cache) {
     }
     for (const t of targetsFrom(u, n.x, n.y, moved)) {
       if (!foes.includes(t)) continue;                      // it cannot shoot at what it has not seen
-      if (homing && !airBase(u, n.x, n.y)) continue;           // turning for home: no more fights on the way, unless it can land after
+      if ((homing && !airBase(u, n.x, n.y)) || runner) continue;           // turning for home: no more fights on the way, unless it can land after
       const dmg = expDmg(u, t, n.x, n.y), left = t.hp - dmg;
       let s = dmg * t.d.cost / 100 + (left <= 0 ? t.d.cost * .4 : 0);
       const p = propAt(t.x, t.y); if (p && p.owner === team && p.cap < 20) s += 5000;

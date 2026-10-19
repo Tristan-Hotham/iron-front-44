@@ -509,7 +509,7 @@ function drawInfantry(P, nat, role, f, n = 3) {
   const w = (INF_WEAPONS[nat] || INF_WEAPONS[natBase(nat)] || INF_WEAPONS.us)[role] || ['rifle', 'rifle', 'rifle'];
   if (NATION[nat] && NATION[nat].zed) return drawZed(P, role, f, n);
   if (role === 'mortar') return drawMortar(P, nat, f);
-  if (role === 'cav') return drawCav(P, nat, f, n, w);
+  if (role === 'cav' && (udef(nat, 'cav') || {}).horse !== false) return drawCav(P, nat, f, n, w);   // ski troops are 'cavalry' without horses
   if (role === 'inf') { if (n >= 2) soldier(P, 1, 9, nat, w[0], f); if (n >= 3) soldier(P, 9, 6, nat, w[1], f + 1); soldier(P, n >= 2 ? 16 : 9, 10, nat, w[2], f); }
   else { if (n >= 2) soldier(P, 2, 10, nat, w[0], f, true); soldier(P, 13, 8, nat, w[1], f); }
 }
@@ -566,7 +566,9 @@ function getSprite(nat, role, f = 0, grey = false, v = '', hi = 1) {
 
 /* ---------- flags ---------- */
 function drawFlag(g, nat, x, y, w, h, mode = SET.flags) {
-  g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip(); nat = nat && natBase(nat);
+  g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+  if (nat && FLAG_EXTRA[nat] && NAT_BASE[nat] && NAT_BASE[nat] !== nat) { FLAG_EXTRA[nat](g, x, y, w, h, mode); g.restore(); return; }   // an army with its own flag (Canada, Australia, Brazil) even though it borrows another's kit
+  nat = nat && natBase(nat);
   if (FLAG_EXTRA[nat]) FLAG_EXTRA[nat](g, x, y, w, h, mode);
   else if (!nat) { g.fillStyle = '#d8d6cc'; g.fillRect(x, y, w, h); g.restore(); return; }
   if (nat === 'ger') {

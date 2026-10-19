@@ -416,7 +416,7 @@ const ITALY_MISSIONS = {
   birelgubi:{name:'Bir el Gubi', place:'The Ariete\'s positions at Bir el Gubi, Libya', date:'19 November 1941, 12:00', theme:'desert', weather:'clear',
     p1:{nat:'it', co:'balotta', funds:0, u:{inf:{n:'Bersaglieri (8º Reggimento)'}, tank:{n:'Carro Armato M13/40 (132º Carristi)'}}},
     p2:{nat:'uk42', co:'scottcockburn', funds:0, u:{tank:{n:'Crusader I (22nd Armoured Brigade)', w:'QF 2-pounder'}}},
-    objective:{win:'kill', role:'tank', n:9, limit:7}, goal:'Break the charge of the 22nd Armoured Brigade: knock out nine Crusaders by {limit}.',
+    objective:{win:'kill', role:'tank', n:12, limit:7}, goal:'Break the charge of the 22nd Armoured Brigade: knock out twelve Crusaders by {limit}.',
     brief:'Operation Crusader has begun: the Eighth Army is driving west to relieve Tobruk, and its armour is fanning out across the desert. On the southern flank stands the Ariete Armoured Division, dug in on a low rise around the well at Bir el Gubi. Bearing down on it is the 22nd Armoured Brigade, three yeomanry regiments fresh from England in brand-new Crusaders. They have never fought before. They are coming on fast, in line abreast, like cavalry.',
     clock:{start:'1941-11-19T12:00', step:120},
     build:() => { const b = MB(36, 20, '.', 9303);

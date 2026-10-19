@@ -371,6 +371,7 @@ async function beginTurn() {
   for (const e of dueEvents()) {
     let made = []; try { made = runEvent(e); } catch (err) { console.error('event failed', err); }
     if (made.length) { focus(made[0].x, made[0].y); for (const u of made) fxDust(...T2W(u.x, u.y), 6); }
+    if (e.terr && terrainCanvas) { for (const [x, y] of e.terr) { drawTile(terrainCanvas.getContext('2d'), x, y); fxExplosion(x, y, 1.4, {crater:false}); } if (typeof sfx === 'function') sfx('boom'); }
     if (e.clear && terrainCanvas) { for (const [x, y] of e.clear) { drawTile(terrainCanvas.getContext('2d'), x, y); fxExplosion(x, y, .6, {crater:false}); } }
     if (e.say) { await say(G.teams[e.team].co, e.say); if (stale(ep)) return; }
   }
@@ -445,7 +446,7 @@ async function gameOver() {
     saveProg(p);
   }
   clearAutosave();
-  const why = {hq:'HQ captured', rout:'enemy routed', survive:'position held', time:'time ran out', kill:'objective destroyed', convoy:'the convoy is through', sunk:'too many ships lost', escape:'the quarry escaped', overrun:'the position was overrun', resign:'the other side resigned'}[G.over.why];
+  const why = (G.mission && G.mission.whyText && G.mission.whyText[G.over.why]) || {hq:'HQ captured', rout:'enemy routed', survive:'position held', time:'time ran out', kill:'objective destroyed', convoy:'the convoy is through', sunk:(G.objective.protect && !['cv', 'bb', 'dd', 'merch', 'esc'].includes(G.objective.protect) ? 'the defence was broken' : 'too many ships lost'), escape:'the quarry escaped', overrun:'the position was overrun', resign:'the other side resigned'}[G.over.why];
   const r = $('#result');
   r.querySelector('h2').textContent = bothHuman && !G.online ? `${NATION[G.teams[w].nat].n.toUpperCase()} WINS` : won ? 'VICTORY' : 'DEFEAT';   // hotseat: no single "you"
   r.querySelector('.why').textContent = `${NATION[G.teams[w].nat].n} wins: ${why} at ${fmtClock(G.day, G.clock, true)}.`;
@@ -907,7 +908,7 @@ function continueGame() {
 }
 function missionCfg(m) {
   return {map:missionMap(m), theme:m.theme, mission:m, objective:m.objective, events:m.events, income:m.income, weather:m.weather, clock:m.clock, fog:!!m.fog,
-    teams:{1:Object.assign({ai:false}, m.p1), 2:Object.assign({ai:true}, m.p2)}, units:m.units};
+    teams:{1:Object.assign({ai:false}, m.p1), 2:Object.assign({ai:true}, m.p2)}, units:m.units, persona:m.persona || null};   /* a battle can set the enemy's temperament: the assault on a hold-out comes on hard */
 }
 function openCampaigns() {
   const p = loadProg(), el = $('#camplist'); el.innerHTML = '';

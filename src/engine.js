@@ -497,10 +497,12 @@ function runEvent(e) {
     const u = spawn(e.team, s); if (u) made.push(u);
   }
   for (const u of made) { u.moved = false; u.done = false; }
+  if (G.objective.win === 'kill' && e.team === 2 && G.killTotal != null) G.killTotal += made.filter(u => u.role === G.objective.role).length;   // reinforcements join the pool to destroy: a kill target counts kills, not what is left
   if (e.funds) G.teams[e.team].funds += e.funds;
   if (e.heal) for (const u of G.units) if (u.team === e.team) u.hp = Math.min(100, u.hp + e.heal * 10);
   if (e.hurt) for (const u of G.units) if (u.team === e.hurtTeam || (!e.hurtTeam && u.team !== e.team)) u.hp = Math.max(10, u.hp - e.hurt * 10);   // frostbite, typhus, an empty ammunition dump
   if (e.clear) for (const [x, y] of e.clear) if (inside(x, y) && TER[terr(x, y)].clear) setTerr(x, y, TER[terr(x, y)].clear);
+  if (e.terr) for (const [x, y, t] of e.terr) if (inside(x, y) && TER[t] && !unitAt(x, y)) setTerr(x, y, t);   // the map changes: a bridge blown, a ford flooded
   if (e.shock && typeof shellShock === 'function') setTimeout(() => shellShock(e.shock), 900);   // after the banner has been read
   if (e.smoke) { const [x0, y0, x1, y1, days] = e.smoke; (G.smoke = G.smoke || []).push({x0, y0, x1, y1, until:G.day + days}); }
   return made;

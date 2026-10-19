@@ -4,7 +4,7 @@
 
 ![Bit-zkrieg: Iron Front '44](poster.jpg)
 
-A Second World War turn-based tactics game in the Advance Wars mould. There are eighty-two battles in thirteen campaigns: Shanghai in 1937, the invasion of Poland, the fall of France, the Desert War from Beda Fomm to Tunis, Italy's own war from the Pindus to Filottrano, the Atlantic, the carrier war from Taranto to Ten-Go, Pearl Harbor to Singapore, the Pacific, China's War of Resistance, and Normandy and the Eastern Front through to the Reichstag. Every battle has a historical briefing, the real forces and generals, and an aftermath telling you what actually happened.
+A Second World War turn-based tactics game in the Advance Wars mould. There are 149 battles in twenty-three campaigns: Khalkhin Gol, the Winter War, Shanghai in 1937, the invasion of Poland, the fall of France, the Desert War from Beda Fomm to Tunis, Italy's own war from the Pindus to Filottrano, the Atlantic, the carrier war from Taranto to Ten-Go, Pearl Harbor to Singapore, the Pacific, China's War of Resistance, and Normandy and the Eastern Front through to the Reichstag. Every battle has a historical briefing, the real forces and generals, and an aftermath telling you what actually happened.
 
 ![El Alamein](docs/screens/alamein.png)
 
@@ -14,7 +14,7 @@ A Second World War turn-based tactics game in the Advance Wars mould. There are 
 
 ## Modes
 
-- **Campaigns:** thirteen campaigns, Allied and Axis, each battle with its history.
+- **Campaigns:** twenty-three campaigns, Allied and Axis, 149 battles from Khalkhin Gol in 1939 to the Kuril Islands in 1945, each with its history: among them the Winter War, the Desert Fox, Barbarossa, Burma, the Australians, Canada and Poland, the Philippines and Zhukov in the Far East.
 - **Skirmish:** random land and island maps, any two armies, and a choice of enemy general.
 - **Last Stand:** hold your HQ against growing waves. You can pick your starting money and troops.
 - **Dead of Night:** zombie wave defence. The dead you kill rise again.
