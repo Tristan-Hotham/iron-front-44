@@ -165,7 +165,7 @@ const NATION = {
       htank:{n:'Churchill Mk VII', w:'QF 75 mm', snd:'gun75', shape:'churchill', mv:3, arm:.72, pow:.95, cost:15000},
       art:  {n:'QF 25-pounder', w:'87.6 mm gun-howitzer', snd:'howitzer', shape:'pdr25', pow:1.1},
       rkt:  {n:'Land Mattress', w:'3 in rockets x32', snd:'mattress', shape:'mattress', mv:4, cost:12000},
-      aa:   {n:'Crusader AA Mk II', w:'40 mm Bofors', snd:'bofors', shape:'crusaderaa'},
+      aa:   {n:'Crusader III AA Mk I', w:'40 mm Bofors', snd:'bofors', shape:'crusaderaa'},
       ftr:  {n:'Spitfire Mk IX', w:'20 mm Hispano & .303', snd:'strafeUK', shape:'spitfire'},
       bmr:  {n:'Hawker Typhoon IB', w:'RP-3 rockets', snd:'rp3', shape:'typhoon'},
       lc:   {n:'Landing Craft Assault', w:'transport', snd:'naval', shape:'lca'},
@@ -203,7 +203,10 @@ function udef(nat, role) {
   const o = typeof G !== 'undefined' && G && G.uover && G.uover[nat] && G.uover[nat][role];
   if (o) v = Object.assign({}, v || {}, o);
   if (!r || !v) return null;                           // not every army fields every role (DD tanks, fixed defences)
-  return Object.assign({role, nat, pow:1, arm:1, powArm:1, shape:role}, r, v, {cost:v.cost || r.cost, mv:v.mv || r.mv, mt:v.mt || r.mt});
+  const d = Object.assign({role, nat, pow:1, arm:1, powArm:1, shape:role}, r, v, {cost:v.cost || r.cost, mv:v.mv || r.mv, mt:v.mt || r.mt});
+  if (role === 'apc' && d.snd === 'naval') d.snd = (N.u.inf && N.u.inf.snd) || 'bren';   // an unarmed lorry fights with the rifles of the men in it
+  if (d.snd === 'stuka' && !/^ju87/.test(d.shape)) d.snd = ['val', 'sbd', 'helldiver', 'judy', 'barracuda'].includes(d.shape) ? 'divebomb' : 'bombs';   // the siren was the Ju 87's alone; level bombers just bomb
+  return d;
 }
 /* the army whose art, flags and voices a nation borrows (1940 Wehrmacht looks like the 1944 one, and so on) */
 const NAT_BASE = {ger40:'ger', uk40:'uk', su41:'su', usp:'us', fr40:'fr40', be:'be'};
@@ -245,7 +248,7 @@ const CO = {
     cop:{n:'Backhand Blow', star:3, txt:'All units heal 2 HP and gain +15% firepower.', heal:2, atk:{all:15}, fx:'heal'},
     scop:{n:'Sichelschnitt', star:7, txt:'Encirclement: enemy units -1 move. Yours +1 move, +25% firepower, +15% defence.', mv:{all:1}, atk:{all:25}, def:{all:15}, enemyMv:-1, fx:'dust'},
     look:{cap:'peaked', face:'#e5bc9a', hair:'#9b9b9b', jaw:0, collar:'#b3262b', tunic:'#6a6c5c', nose:true},
-    say:{start:'Let them come forward. Then we cut behind them.', win:'A text-book envelopment.', lose:'Lost victories, every one of them.', power:'Now. Close the sickle.'}},
+    say:{start:'Let them come forward. Then we cut behind them.', win:'A textbook envelopment.', lose:'Lost victories, every one of them.', power:'Now. Close the sickle.'}},
   model: {n:'Walter Model', nat:'ger', rank:'Generalfeldmarschall', nick:"Hitler's Fireman",
     bio:'Sent to every collapsing front. Took over Army Group Centre after Bagration, then Army Group B: Falaise, Arnhem, the Ardennes and the Ruhr.',
     d2d:{txt:'Units in towns, woods, bocage and bunkers +20% defence.', def:{cover:20}},
@@ -312,7 +315,7 @@ const CO = {
     look:{cap:'garrison', stars:4, face:'#eec8a8', hair:'#d6c09a', jaw:0, smile:true, tunic:'#6f6040', ike:true},
     say:{start:'You are about to embark upon the Great Crusade.', win:'The free men of the world are marching together to victory.', lose:'The fault, if any, is mine alone.', power:'OK. Let\'s go.'}},
   mcauliffe: {n:'Anthony McAuliffe', nat:'us', rank:'Brigadier General', nick:'Nuts!',
-    bio:'Commanded the 101st Airborne\'s artillery on D-Day and in Bastogne, December 1944, answered a German demand to surrender with one word.',
+    bio:'Commanded the 101st Airborne\'s artillery on D-Day. In Bastogne in December 1944 he answered a German demand to surrender with one word.',
     d2d:{txt:'Infantry +25% defence.', def:{foot:25}},
     cop:{n:'Nuts!', star:3, txt:'All units +30% defence, heal 1 HP.', def:{all:30}, heal:1, fx:'heal'},
     scop:{n:'Screaming Eagles', star:6, txt:'Supply drop: all heal 2 HP. Infantry +40% firepower and defence and may act twice.', atk:{foot:40}, def:{foot:40}, heal:2, again:'foot', fx:'heal'},

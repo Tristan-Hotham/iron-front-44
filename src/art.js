@@ -9,6 +9,8 @@
 const SET = {flags:'hist', sound:true, music:true, anim:true, aiFast:false, battle:true, vol:.8, fx:true, tips:true, difficulty:'normal', gore:'standard'};
 try { Object.assign(SET, JSON.parse(localStorage.getItem('if44set') || '{}')); } catch (e) {}
 const saveSet = () => { try { localStorage.setItem('if44set', JSON.stringify(SET)); } catch (e) {} };
+/* older Safari and Firefox have no roundRect: speech bubbles fall back to plain rectangles instead of throwing */
+if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h) { this.rect(x, y, w, h); };
 
 function hrand(x, y, s = 0) { let h = (x * 374761393 + y * 668265263 + s * 2246822519) >>> 0; h = (h ^ (h >>> 13)) * 1274126177 >>> 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
 function hexRGB(h) { const n = parseInt(h.slice(1, 7), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
@@ -524,7 +526,8 @@ function unitColours(nat) { const c = NATION[nat].col; return {m:c.m, d:c.d, hi:
 /* hi: detail multiplier. The map draws at 1; the battle scenes draw the same models at 2, painted from the same
    recipes on a finer grid, so edges, rivets, faces and kit come out sharper instead of blown-up pixels */
 function getSprite(nat, role, f = 0, grey = false, v = '', hi = 1) {
-  const key = nat + role + f + (grey ? 'g' : '') + v + (hi > 1 ? '@' + hi : '');
+  const ov = typeof G !== 'undefined' && G && G.uover && G.uover[nat] && G.uover[nat][role];   // a battle that fields a different model (Kasserine's Stuart, the Hellcats) must not reuse the default sprite
+  const key = nat + role + (ov && ov.shape ? '~' + ov.shape : '') + f + (grey ? 'g' : '') + v + (hi > 1 ? '@' + hi : '');
   let c = spriteCache.get(key); if (c) return c;
   c = mkCanvas(ART * hi, ART * hi); const P = painter(c.getContext('2d'), SC * hi), C = unitColours(nat), d = udef(nat, role);
   if (!d) { spriteCache.set(key, c); return c; }

@@ -94,29 +94,45 @@ function fxTracers(from, to, n = 6, col = '255,230,140', spread = 10, dur = 600)
 }
 
 /* what each unit's weapon looks like on the map */
+/* chosen from the weapon itself, not just the unit's slot: a slot may hold a gun in one army and a rocket launcher in another */
+const MG_SND = new Set(['mg34', 'mg42', 'bren', 'bar', 'dt', 'm2hb', 'garand', 'ppsh', 'mg', 'vickers']);
+const DIVERS = new Set(['ju87', 'ju87t', 'val', 'sbd', 'helldiver', 'judy', 'barracuda']);
 function fxClass(d) {
   if (NATION[d.nat] && NATION[d.nat].zed) return d.role === 'mortar' ? 'bile' : 'maul';
-  if (d.role === 'eng') return d.snd === 'flamer' ? 'flamer' : 'charge';
-  if (d.role === 'at') return d.snd === 'ptrd' ? 'atrifle' : 'rocketAT';
+  const w = String(d.w || '');
+  if (d.snd === 'flamer' && (d.role !== 'eng' || /flame/i.test(w))) return 'flamer';   // the Zippo; engineers only if they carry one
+  if (d.role === 'eng') return 'charge';
+  if (d.role === 'at') return d.snd === 'ptrd' ? 'atrifle' : d.snd === 'rocketAT' || d.snd === 'piat' ? 'rocketAT' : d.snd === 'flak20' ? 'atrifle' : 'cannon';   // bazookas and PIATs; AT rifles; anti-tank guns fire shells
+  if (d.role === 'rkt') return /rocket/i.test(w) ? 'salvo' : /mortar|bomb/i.test(w) ? 'mortar' : 'artillery';   // Katyushas and Nebelwerfers; elsewhere the slot holds a heavy gun (or Japan's spigot mortar)
   if (d.role === 'cav') return 'smallarms';
-  if (d.role === 'sub' || d.role === 'esc' || d.role === 'bb') return 'naval';
-  if (d.role === 'cv' || d.role === 'tb') return 'bombs';
+  if (!d.air && !d.sea && MG_SND.has(d.snd) && ['recon', 'tank', 'pak', 'apc', 'nest'].includes(d.role)) return 'smallarms';   // tankettes, carriers, MG-armed cars and pillboxes
+  if (d.role === 'sub' || d.role === 'tb') return 'torpedo';     // against a ship; against anything else they fall back (torpedoVs)
+  if (d.role === 'esc' || d.role === 'bb') return 'naval';
+  if (d.role === 'cv') return 'bombs';
   if (d.role === 'mortar') return 'mortar';
   if (['inf', 'apc', 'nest'].includes(d.role) || (d.role === 'recon' && natBase(d.nat) === 'su')) return 'smallarms';
   if (d.role === 'art') return 'artillery';
   if (d.role === 'rkt') return 'salvo';
   if (d.role === 'aa') return 'flak';
   if (d.role === 'ftr') return 'strafe';
-  if (d.role === 'bmr') return ['ju87', 'val', 'sbd'].includes(d.shape) ? 'dive' : (d.shape === 'typhoon' || d.shape === 'il2') ? 'rockets' : 'bombs';
+  if (d.role === 'bmr') return DIVERS.has(d.shape) ? 'dive' : (d.shape === 'typhoon' || d.shape === 'il2') ? 'rockets' : 'bombs';
   if (d.role === 'dd') return 'naval';
   return 'cannon';
 }
+/* torpedoes only run at ships: a torpedo bomber bombs anything else, a submarine uses its deck gun. A warship fires its AA guns at aircraft, not its main battery */
+function torpedoVs(k, ad, dd) {
+  if (dd && dd.role === 'sub' && (ad.role === 'esc' || ad.role === 'dd' || ad.role === 'tb')) return 'depth';   // a U-boat is hunted with depth charges
+  if (k === 'torpedo' && !(dd && dd.sea)) return ad.air ? 'bombs' : 'naval';
+  if (k === 'naval' && ad.sea && dd && dd.air) return 'flak';
+  if (k === 'flak' && dd && !dd.air && /88|10\.5 cm|8\.8/.test(String(ad.w) + ad.snd)) return 'cannon';   // the 88 levelled at tanks fires its gun, not a barrage of tracer
+  return k; }
 /* the attack on the map, with its sound tied to the picture: the report with the muzzle flash, the whistle in flight, the bang on impact.
    o.quiet: the battle scene has already played the sound of this attack */
 async function fxAttackMap(u, t, killed, o = {}) {
   if (FAST || !SET.fx) return;
-  const k = fxClass(u.d), [ax, ay] = T2W(u.x, u.y), dir = t.x >= u.x ? 1 : -1, big = u.role === 'htank' || u.role === 'pak' ? 1.4 : u.role === 'tank' || u.role === 'mtank' ? 1.1 : .8;
+  const k = torpedoVs(fxClass(u.d), u.d, t.d), [ax, ay] = T2W(u.x, u.y), dir = t.x >= u.x ? 1 : -1, big = u.role === 'htank' || u.role === 'pak' ? 1.4 : u.role === 'tank' || u.role === 'mtank' ? 1.1 : .8;
   const S = !o.quiet, snd = u.d.snd, armour = t.d.mt === 'tread' || t.d.sea;
+  if (S && u.d.air) airPass(u.d, .45);                    // the engines, as she comes in
   const fire = () => { if (S) shot(snd); }, bang = (s, n = 0) => { if (S && n < 4) boomAt(s, {gain:n ? .6 : 1}); }, whistleFor = (ms, at = 100) => { if (S) setTimeout(() => incomingTo((ms - at) / 1000), at); }, clang = () => { if (S && armour) sfxNow('clang'); };
   switch (k) {
     case 'smallarms': fire(); fxMuzzle(ax + dir * 14, ay - 8, dir, .5); fxTracers(u, t, u.role === 'nest' || snd === 'mg42' ? 12 : 7); if (S) impactSound(u.d, t.d, .15); await sleep(500); break;
@@ -127,13 +143,18 @@ async function fxAttackMap(u, t, killed, o = {}) {
     case 'cannon': fire(); fxMuzzle(ax + dir * 20, ay - 10, dir, big); fxDust(ax, ay + 10, 4); shakeCam(2 * big); await fxProjectile(u, t, 'tracer', 140); fxExplosion(t.x, t.y, big * .8, {crater:false}); bang(.6 * big); clang(); break;
     case 'artillery': fire(); fxMuzzle(ax + dir * 16, ay - 14, dir, 1.3); fxSmoke(ax, ay - 10, 6, .4, 14, 24); shakeCam(3); whistleFor(650); await fxProjectile(u, t, 'arc', 650); fxExplosion(t.x, t.y, 1.2); bang(1.2); break;
     case 'mortar': fire(); fxMuzzle(ax + dir * 6, ay - 14, dir, .6); whistleFor(700, 200); await fxProjectile(u, t, 'arc', 700); fxExplosion(t.x, t.y, .7); bang(.8); break;
-    case 'salvo': for (let i = 0; i < 6; i++) setTimeout(() => { if (S && i < 4) launch({gain:.8}); fxSmoke(ax, ay - 8, 2, .4, 10, 18); fxProjectile(u, {x:t.x + rnd(-.6, .6), y:t.y + rnd(-.6, .6)}, 'rocketArc', 700).then(() => { fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-20, 20), wy:T2W(t.x, t.y)[1] + rnd(-14, 14)}); bang(.8, i); }); }, i * 110); await sleep(1300); break;
+    case 'salvo': for (let i = 0; i < 6; i++) setTimeout(() => { if (S && i === 0) shot(snd); else if (S && i < 4) launch({gain:.8}); fxSmoke(ax, ay - 8, 2, .4, 10, 18); fxProjectile(u, {x:t.x + rnd(-.6, .6), y:t.y + rnd(-.6, .6)}, 'rocketArc', 700).then(() => { fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-20, 20), wy:T2W(t.x, t.y)[1] + rnd(-14, 14)}); bang(.8, i); }); }, i * 110); await sleep(1300); break;
     case 'flak': fire(); for (let i = 0; i < 6; i++) setTimeout(() => { fxMuzzle(ax + dir * 10, ay - 12, dir, .5); const [bx, by] = T2W(t.x, t.y); part({kind:'puff', x:bx + rnd(-16, 16), y:by - 20 + rnd(-12, 12), size:6, grow:14, life:900}); }, i * 90); fxTracers(u, t, 8, '255,200,120', 14); await sleep(650); break;
     case 'strafe': fire(); fxTracers(u, t, 14, '255,230,140', 22, 500); if (S) impactSound(u.d, t.d, .3); await sleep(550); break;
     case 'dive': case 'bombs': fire(); whistleFor(420, 0); await fxProjectile({x:u.x, y:u.y - .4}, t, 'bomb', 420); fxExplosion(t.x, t.y, 1.5); bang(1.5); break;
     case 'rockets': for (let i = 0; i < 4; i++) setTimeout(() => { if (S) launch({gain:.8}); fxProjectile(u, {x:t.x + rnd(-.4, .4), y:t.y + rnd(-.4, .4)}, 'rocket', 260).then(() => { fxExplosion(t.x, t.y, .7, {wx:T2W(t.x, t.y)[0] + rnd(-16, 16), wy:T2W(t.x, t.y)[1] + rnd(-10, 10)}); bang(.8, i); }); }, i * 90); await sleep(700); break;
     case 'maul': { if (S) sfx(snd); const [bx, by] = T2W(t.x, t.y); for (let i = 0; i < 3; i++) setTimeout(() => { fxBlood(bx + rnd(-8, 8), by + rnd(-6, 6), 5); shakeCam(1.5); }, i * 140); await sleep(520); break; }
     case 'bile': { if (S) sfx(snd); await fxProjectile(u, t, 'arc', 650); const [bx, by] = T2W(t.x, t.y); fxDust(bx, by, 14, '130,180,60'); fxSmoke(bx, by - 6, 4, .2, 8, 14); break; }
+    case 'depth': await fxProjectile(u, t, 'arc', 600); fxSplash(...T2W(t.x, t.y), .4); if (S) sfxNow('splash'); await sleep(450); fxExplosion(t.x, t.y, 1.3); shakeCam(4); if (S) boomAt(1.3, {water:true}); break;   // depth charges: in, a pause, then the sea heaves
+    case 'torpedo': {                                   // dropped low over the water, or fired from a submerged tube: a wake runs in, then the column of water
+      fire(); let from = u;
+      if (u.d.air) { from = {x:u.x + (t.x - u.x) * .3, y:u.y + (t.y - u.y) * .3}; await fxProjectile({x:u.x, y:u.y - .3}, from, 'bomb', 260); fxSplash(...T2W(from.x, from.y), .4); if (S) sfxNow('splash'); }
+      await fxProjectile(from, t, 'torpedo', 900); fxExplosion(t.x, t.y, 1.5); shakeCam(5); if (S) { boomAt(1.4, {water:true}); sfxNow('torpedo'); } break; }
     case 'naval': fire(); fxMuzzle(ax + dir * 20, ay - 12, dir, 1.6); fxSmoke(ax, ay - 12, 8, .5, 16, 26); shakeCam(4); whistleFor(750); await fxProjectile(u, t, 'arc', 750); fxExplosion(t.x, t.y, 1.5); bang(1.5); break;
   }
   if (t.d.foot) { const [bx, by] = T2W(t.x, t.y); fxBlood(bx, by, killed ? 14 : 7); if (S && (goreLevel() || t.d.nat === 'zed')) sfx(t.d.nat === 'zed' ? (killed ? 'zdie' : 'zhurt') : killed ? 'scream' : 'cry', .1); }
@@ -204,7 +225,10 @@ function fxDraw(ctx, now) {
         ctx.strokeStyle = `rgba(${p.col},.95)`; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x, y); ctx.stroke(); ctx.globalCompositeOperation = 'source-over'; break; }
       case 'proj': {
         const x = p.ax + (p.bx - p.ax) * k, y = p.ay + (p.by - p.ay) * k - (p.arc ? Math.sin(k * Math.PI) * p.arc : 0);
-        if (p.style === 'rocket' || p.style === 'rocketArc') { fxTrail(x, y); ctx.fillStyle = '#ffd890'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+        if (p.style === 'rocket' || p.style === 'rocketArc') { fxTrail(x, y);
+          const k2 = Math.min(1, k + .02), x2 = p.ax + (p.bx - p.ax) * k2, y2 = p.ay + (p.by - p.ay) * k2 - (p.arc ? Math.sin(k2 * Math.PI) * p.arc : 0);
+          drawRocket(ctx, x, y, Math.atan2(y2 - y, x2 - x), .8); }
+        else if (p.style === 'torpedo') { const k0 = Math.max(0, k - .4); ctx.strokeStyle = 'rgba(235,245,250,.75)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.ax + (p.bx - p.ax) * k0, p.ay + 10 + (p.by - p.ay) * k0); ctx.lineTo(x, y + 10); ctx.stroke(); ctx.fillStyle = '#f4f8fa'; ctx.beginPath(); ctx.arc(x, y + 10, 1.8, 0, 7); ctx.fill(); }   // a white wake on the surface
         else if (p.style === 'bomb') { ctx.fillStyle = '#222'; ctx.beginPath(); ctx.ellipse(x, y, 3, 5, 0, 0, 7); ctx.fill(); }
         else if (p.style === 'arc') { ctx.fillStyle = '#2a2a26'; ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill(); if (Math.random() < .3) part({kind:'smoke', x, y, vx:0, vy:0, size:2, grow:4, life:300, shade:.3}); }
         else { ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(255,230,160,.95)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - (p.bx - p.ax) * .08, y - (p.by - p.ay) * .08); ctx.lineTo(x, y); ctx.stroke(); ctx.globalCompositeOperation = 'source-over'; }
@@ -234,6 +258,18 @@ function fxDraw(ctx, now) {
   ctx.globalCompositeOperation = 'lighter';
   for (const l of FX.lights) { const k = 1 - (now - l.t0) / l.life, gr = ctx.createRadialGradient(l.wx, l.wy, 0, l.wx, l.wy, l.r); gr.addColorStop(0, `rgba(${l.col},${.35 * k})`); gr.addColorStop(1, `rgba(${l.col},0)`); ctx.fillStyle = gr; ctx.fillRect(l.wx - l.r, l.wy - l.r, l.r * 2, l.r * 2); }
   ctx.globalCompositeOperation = 'source-over';
+}
+/* a rocket in flight, pointing where it is going: the motor's flame, the tube, the warhead, the fins (a Katyusha's M-13, a Nebelwerfer round, an RP-3) */
+function drawRocket(ctx, x, y, ang, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.scale(s, s);
+  ctx.globalCompositeOperation = 'lighter';
+  const fl = 7 + Math.random() * 5; ctx.fillStyle = 'rgba(255,170,60,.85)'; ctx.beginPath(); ctx.moveTo(-6, -1.8); ctx.lineTo(-6 - fl, 0); ctx.lineTo(-6, 1.8); ctx.fill();
+  ctx.fillStyle = 'rgba(255,240,190,.95)'; ctx.beginPath(); ctx.moveTo(-6, -1); ctx.lineTo(-6 - fl * .5, 0); ctx.lineTo(-6, 1); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#3e4434'; ctx.fillRect(-6, -1.6, 10, 3.2);                     // the motor tube
+  ctx.fillStyle = '#5a6248'; ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(8.5, 0); ctx.lineTo(4, 2); ctx.fill();   // the warhead
+  ctx.fillStyle = '#2a2e24'; ctx.beginPath(); ctx.moveTo(-6, -1.6); ctx.lineTo(-7.5, -3.6); ctx.lineTo(-3.5, -1.6); ctx.moveTo(-6, 1.6); ctx.lineTo(-7.5, 3.6); ctx.lineTo(-3.5, 1.6); ctx.fill();   // fins
+  ctx.restore();
 }
 function fxTrail(x, y) { part({kind:'smoke', x, y, vx:rnd(-4, 4), vy:-4, size:3, grow:9, life:700, shade:.15}); }
 function drawBomberShape(ctx, x, y, s, shadow, col = '#4a4e44') {        // four-engine bomber silhouette seen from above
@@ -282,7 +318,8 @@ function fxLife(ctx, t) {
   }
   // night: tracer fire along the front, and searchlights on the big Eastern Front assaults
   if (night && G.units.length) {
-    if (Math.random() < .04) { const a = G.units[Math.random() * G.units.length | 0], foes = G.units.filter(u => u.team !== a.team);
+    const vis = G.units.filter(u => seen(u));               // only units the player can see: tracers must not give away what the dark is hiding
+    if (vis.length && Math.random() < .04) { const a = vis[Math.random() * vis.length | 0], foes = vis.filter(u => u.team !== a.team);
       if (foes.length) { const b = foes.reduce((m, u) => dist(u, a) < dist(m, a) ? u : m, foes[0]); if (dist(a, b) < 8) fxTracers(a, b, 6, Math.random() < .5 ? '255,120,90' : '140,255,140', 16, 700); } }
     if (G.mission && ['seelow', 'berlin', 'vistula'].includes(G.mission.id)) {
       ctx.globalCompositeOperation = 'lighter';
@@ -366,12 +403,13 @@ async function powerEffects(plan) {
       await sleep(1700);
     } else if (s.kind === 'barrage' || s.kind === 'naval') {
       sfx(s.kind === 'naval' ? 'naval' : 'barrage');
-      await sleep(900);
+      await sleep(s.kind === 'naval' ? 2100 : 900);                 // the shells land as the recorded blasts do
       for (let i = 0; i < 16; i++) setTimeout(() => fxExplosion(s.x, s.y, s.kind === 'naval' ? 1.5 : 1, {wx:cx + rnd(-R, R), wy:cy + rnd(-R, R) * .7}), i * 110);
       await sleep(1900);
     } else {                                                  // Nebelwerfer, Katyusha and rocket salvos arc in from the friendly side
       sfx(s.kind === 'katyusha' ? 'katyusha' : s.kind === 'nebel' ? 'nebel' : 'rp3');
       const from = mine.length ? mine[0] : {x:s.x - 8, y:s.y};
+      if (s.kind === 'nebel') await sleep(1200);                // the Nebelwerfer's rockets howl for a while before they land
       for (let i = 0; i < 14; i++) setTimeout(() => fxProjectile({x:from.x + rnd(-1, 1), y:from.y + rnd(-1, 1)}, {x:s.x + rnd(-s.r, s.r), y:s.y + rnd(-s.r, s.r)}, 'rocketArc', 900).then(() => fxExplosion(s.x, s.y, .9, {wx:cx + rnd(-R, R), wy:cy + rnd(-R, R) * .7})), i * 90);
       await sleep(2300);
     }

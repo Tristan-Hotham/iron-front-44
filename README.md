@@ -8,6 +8,10 @@ A Second World War turn-based tactics game in the Advance Wars mould. There are 
 
 ![El Alamein](docs/screens/alamein.png)
 
+![The Carrier War: Jills drop their torpedoes at the Philippine Sea](docs/screens/carrier-war.jpg)
+
+![Italy at War: Keren, Eritrea, 1941](docs/screens/keren.png)
+
 ## Modes
 
 - **Campaigns:** thirteen campaigns, Allied and Axis, each battle with its history.

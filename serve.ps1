@@ -22,7 +22,13 @@ while ($l.IsListening) {
       $r = New-Object IO.StreamReader($c.Request.InputStream, [Text.Encoding]::UTF8); [IO.File]::WriteAllText((Join-Path $dir "$($Matches[1]).txt"), $r.ReadToEnd(), (New-Object Text.UTF8Encoding $false))
       $c.Response.StatusCode = 204; $c.Response.Close(); continue
     }
-    if ($c.Request.HttpMethod -eq 'POST' -and $p -match '^save/(music|sfx|trailer)/([\w-]+\.(mp3|ogg|m4a|mp4|webm|jpg|png))$') {   # dev: store an approved audio file fetched by the page
+    if ($c.Request.HttpMethod -eq 'POST' -and $p -match '^frame/(\d+)$') {   # dev: the trailer renderer posts each frame as raw JPEG bytes
+      $dir = Join-Path $root 'trailer\frames'; New-Item -ItemType Directory -Force $dir | Out-Null
+      $ms = New-Object IO.MemoryStream; $c.Request.InputStream.CopyTo($ms)
+      [IO.File]::WriteAllBytes((Join-Path $dir ('f{0:D5}.jpg' -f [int]$Matches[1])), $ms.ToArray())
+      $c.Response.StatusCode = 204; $c.Response.Close(); continue
+    }
+    if ($c.Request.HttpMethod -eq 'POST' -and $p -match '^save/(music|sfx|trailer)/([\w-]+\.(mp3|ogg|m4a|mp4|webm|jpg|png|wav))$') {   # dev: store an approved audio file fetched by the page
       $dir = Join-Path $root $Matches[1]; New-Item -ItemType Directory -Force $dir | Out-Null
       $ms = New-Object IO.MemoryStream; $c.Request.InputStream.CopyTo($ms)
       [IO.File]::WriteAllBytes((Join-Path $dir $Matches[2]), $ms.ToArray())

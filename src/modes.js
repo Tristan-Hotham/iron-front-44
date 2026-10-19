@@ -16,6 +16,15 @@ const PERSONAS = {
   rusher:     {n:'Rusher', adv:3.2, cover:.2, fear:0, atk:.35, cap:.25, noise:0, txt:'A tester that ignores everything but a dash for the objective. If it wins fast, the mission can be exploited.'},
   sniper:     {n:'Sniper', adv:.8, cover:1.4, fear:1.6, atk:1.7, cap:.8, noise:0, txt:'A tester that hangs back, keeps out of fire and trades shots: shows whether a map can be won by attrition.'},
   turtle:     {n:'Turtle', adv:.35, cover:2.2, fear:2.5, atk:.85, cap:.6, noise:0, txt:'A tester that hardly advances. If it still wins, the mission is too easy.'},
+  // the second set of testers: other temperaments, so a battle balanced against the first eight is checked against players they do not resemble
+  blitz:      {n:'Blitz', adv:2, cover:.5, fear:.5, atk:1.5, cap:1.3, noise:0, txt:'A tester that drives straight through with everything it has.'},
+  counter:    {n:'Counter-puncher', adv:.6, cover:1.5, fear:1.2, atk:1.6, cap:.7, noise:0, txt:'A tester that waits for the enemy to come on, then hits hard.'},
+  raider:     {n:'Raider', adv:1.3, cover:.8, fear:1.2, atk:.9, cap:2.2, noise:0, txt:'A tester that slips past the fighting to take towns and objectives.'},
+  brawler:    {n:'Brawler', adv:1.6, cover:.4, fear:.1, atk:1.8, cap:.6, noise:0, txt:'A tester that closes in and slugs it out.'},
+  novice:     {n:'Novice', adv:1, cover:.6, fear:.5, atk:1, cap:1, noise:2500, txt:'A tester that plays like someone new to the game: often well, sometimes badly.'},
+  fortress:   {n:'Fortress', adv:.2, cover:2.5, fear:3, atk:1.2, cap:.4, noise:0, txt:'A tester that hardly moves and shoots anything in reach.'},
+  skirmisher: {n:'Skirmisher', adv:1, cover:1.8, fear:1.4, atk:1.3, cap:1.2, noise:0, txt:'A tester that fights from cover while taking ground.'},
+  gambler:    {n:'Gambler', adv:1.4, cover:.8, fear:.6, atk:1.2, cap:1.4, noise:700, txt:'A bold tester with a streak of chance.'},
 };
 const CO_PERSONA = {
   rommel:'aggressive', guderian:'aggressive', patton:'aggressive', konev:'aggressive', horrocks:'aggressive', reinhardt:'aggressive', yamashita:'aggressive', kawaguchi:'aggressive',
@@ -37,13 +46,13 @@ const WAVE_POOL = [                                    // [role, first wave it a
   ['mtank', 4, 3], ['aa', 4, 1], ['rkt', 5, 1], ['ftr', 5, 1], ['bmr', 6, 2], ['htank', 7, 2], ['tb', 99, 0],
 ];
 function waveCost(n, diff) { return Math.round((7000 + n * 5200 + n * n * 350) * ({easy:.75, normal:1, hard:1.3}[diff] || 1)); }
-function waveRoster(n, nat, diff, seed) {
+function waveRoster(n, nat, diff, seed, scale = 1) {
   const zed = NATION[nat] && NATION[nat].zed;
-  // the dead come in rounds you can finish: a handful at first, a horde by the sixth
-  let budget = waveCost(n, diff) * (zed ? ({easy:.26, normal:.35, hard:.46}[diff] || .35) * (1 + n * .12) : 1), s = seed >>> 0 || 1; const R = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+  // the dead come in rounds you can finish: a handful at first, a horde by the sixth; scale grows them with your army
+  let budget = waveCost(n, diff) * scale * (zed ? ({easy:.26, normal:.35, hard:.46}[diff] || .35) * (1 + n * .12) : 1), s = seed >>> 0 || 1; const R = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
   const pool = (zed ? ZED_POOL : WAVE_POOL).filter(([r, w]) => n >= w && udef(nat, r));
   const out = {}; let guard = 0;
-  while (budget > 0 && guard++ < 60 && pool.length) {
+  while (budget > 0 && guard++ < 140 && pool.length) {
     const tot = pool.reduce((a, p) => a + p[2], 0); let k = R() * tot, pick = pool[0];
     for (const p of pool) { k -= p[2]; if (k <= 0) { pick = p; break; } }
     const c = udef(nat, pick[0]).cost; if (c > budget * 1.4 && Object.keys(out).length) break;
@@ -53,8 +62,11 @@ function waveRoster(n, nat, diff, seed) {
 }
 function waveEdge() {                                  // the enemy comes on from the far edge, away from your HQ
   const hq = Object.values(G.props).find(p => p.owner === 1 && terr(p.x, p.y) === 'hq') || {x:0, y:G.H >> 1};
-  const east = hq.x < G.W / 2, x0 = east ? G.W - 3 : 0, x1 = east ? G.W - 1 : 2;
-  return [x0, 0, x1, G.H - 1];
+  const east = hq.x < G.W / 2, land = x => { let n = 0; for (let y = 0; y < G.H; y++) if (moveCost(udef(G.teams[2].nat, 'inf') || ROLE.inf, x, y)) n++; return n; };
+  let e = east ? G.W - 1 : 0; const step = east ? -1 : 1;
+  while (land(e) < 2 && Math.abs(e - (east ? G.W - 1 : 0)) < G.W / 2) e += step;      // an island or a coast: they come ashore on the first land, not into the sea
+  const x0 = Math.min(e, e + step * 2), x1 = Math.max(e, e + step * 2);
+  return [Math.max(0, x0), 0, Math.min(G.W - 1, x1), G.H - 1];
 }
 function waveTick() {
   const W = G.waves; if (!W) return;
@@ -90,7 +102,9 @@ function zedTick(W) {
   }
   if (G.day < W.next) return;
   W.n++; W.began = G.day; W.cleared = 0; W.deadline = G.day + 5 + Math.min(3, W.n >> 2);
-  const roster = waveRoster(W.n, G.teams[2].nat, W.diff, W.seed + W.n * 977), big = W.n % 5 === 0, z = zedNear(roster, W.n);
+  // the horde grows with you: an army twice the size it started draws nearly twice the dead, so supply drops cannot snowball into safety
+  const army = G.units.filter(u => u.team === 1).reduce((a, u) => a + (u.d.cost || 1000) * u.hp / 100, 0); W.base = W.base || army || 1;
+  const roster = waveRoster(W.n, G.teams[2].nat, W.diff, W.seed + W.n * 977, Math.max(1, Math.pow(army / W.base, .9))), big = W.n % 5 === 0, z = zedNear(roster, W.n);
   const zn = Object.entries(roster).map(([r, k]) => `${k} ${ZED_SHORT[r] || r}`).join(', ');
   G.events.push({day:G.day, team:2, done:false, spawn:z.spec + (big ? `; htank ${z.box.join(',').replace(/,(\d+),(\d+)$/, '-$1,$2')}` : ''), say:`Wave ${W.n}: the dead come out of the dark from the ${z.from.join(' and the ')}${big ? ', and something huge moves among them' : ''}. ${zn}.${alive ? ' The last wave is still among you.' : ''}`});
   if (!FAST && typeof sfx === 'function') { sfx('groan'); sfx('groan', .7); }
@@ -156,7 +170,7 @@ function wavesCfg({rows, theme, nat, co, enemy, eco, diff = 'normal', funds = 60
   const start = {winter:'1944-12-20T06:00', autumn:'1944-11-02T06:00', tropic:'1942-02-08T06:00', desert:'1942-06-01T06:00', tunisia:'1943-02-20T06:00', china:'1938-04-03T06:00', poland:'1939-09-08T06:00', steppe:'1943-07-12T06:00', pacific:'1943-11-20T06:00', volcanic:'1945-02-19T06:00'}[theme] || '1944-07-01T06:00';
   return {map:rows, theme, objective:{win:'waves'}, weather:{winter:'snow', autumn:'rain'}[theme] || 'clear', clock:{start, step:120}, income:{1:.5},
     teams:{1:{nat, co, funds, ai:false}, 2:{nat:enemy, co:eco, funds:0, ai:true}}, units:{1:force ? forceSpec(rows, force) : skirmishUnits(rows, 1), 2:''},
-    waves:{n:0, next:3, every, diff, seed:Date.now() % 1e6, key:name + ':' + nat}};
+    waves:{n:0, next:3, every, diff, seed:Date.now() % 1e6, key:[name, nat, diff, every].join(':'), std:!force && funds <= 6000 && diff !== 'easy' && every >= 3}};   // records are kept per difficulty and wave interval; medals only for the standard settings or harder
 }
 
 /* ---------- the AI testers ---------- */

@@ -11,15 +11,17 @@ const MEDALS = [
   {id:'ships', n:'Navy Cross', txt:'Sink 10 capital ships or carriers.', c:['#1c3a8a', '#e8e8e0']},
   {id:'waves5', n:'Hold Fast', txt:'Survive 5 waves in a Last Stand.', c:['#6a6a4a', '#c8a040']},
   {id:'waves15', n:'Defender of the Line', txt:'Survive 15 waves in a Last Stand.', c:['#8a2a2a', '#e0c050']},
+  {id:'zed5', n:'Until Dawn', txt:'Clear 5 waves of the dead in Dead of Night.', c:['#2a2e26', '#e8c820']},
+  {id:'zed12', n:'Night Watchman', txt:'Clear 12 waves of the dead in Dead of Night.', c:['#1a1a18', '#b8d040']},
   {id:'mapper', n:'Topographer\'s Badge', txt:'Save a map in the Map Builder.', c:['#4a6a3a', '#e8e0c0']},
   {id:'axis', n:'Other Side of the Hill', txt:'Win a battle as Germany or Japan.', c:['#5a5a5a', '#d8d8d0']},
   {id:'resist', n:'Order of the Cloud and Banner', txt:'Win a battle with China.', c:['#1c3a9a', '#d42a2a']},
   {id:'allcamp', n:'Victory Medal', txt:'Complete every campaign.', c:['#c8a040', '#7a3aa0']},
 ];
 const CAMPAIGN_MEDAL = {west:['France and Germany Star', '#1c3a8a', '#d42a2a'], east:['Medal for the Capture of Berlin', '#d42a2a', '#e0c050'], axis:['Iron Cross', '#2a2a2a', '#e8e8e0'],
-  china:['Medal of Victory in the War of Resistance', '#1c3a9a', '#e8e8e0'], weiss:['Poland Campaign Shield', '#5a5a5a', '#c8a040'], gelb:['Western Campaign Clasp', '#4a4a4a', '#d8d8d0'],
-  sea:['Pacific and Atlantic Star', '#203a78', '#e0c050'], atlantic:['Atlantic Star', '#2a5a8a', '#e8e8e0'], rising:['China Incident Medal', '#c8202a', '#e8e2d0'], pacific:['Asiatic-Pacific Campaign Medal', '#b8803a', '#3060c0'], desert:['The Africa Star', '#c8a060', '#c8202a'], italy:['Croce al Merito di Guerra', '#1c3a8a', '#e8e8e0'],
-  carrier:['Distinguished Flying Cross', '#1c3a8a', '#c8202a']};
+  china:['Medal of Victory in the War of Resistance', '#1c3a9a', '#e8e8e0'], weiss:['Iron Cross Second Class', '#5a5a5a', '#c8a040'], gelb:['Panzer Assault Badge', '#4a4a4a', '#d8d8d0'],
+  sea:['1939–45 Star', '#203a78', '#e0c050'], atlantic:['Atlantic Star', '#2a5a8a', '#e8e8e0'], rising:['Greater East Asia War Medal', '#c8202a', '#e8e2d0'], pacific:['Asiatic-Pacific Campaign Medal', '#b8803a', '#3060c0'], desert:['The Africa Star', '#c8a060', '#c8202a'], italy:['Croce al Merito di Guerra', '#1c3a8a', '#e8e8e0'],
+  carrier:['Distinguished Flying Cross', '#1c3a8a', '#c8202a'], training:['Marksmanship Badge', '#4a5a3a', '#c8a040']};
 function stat(p) { return (p.stats = Object.assign({battles:0, wins:0, kills:0, lost:0, subs:0, ships:0, waves:0, maps:0}, p.stats || {})); }
 function award(p, id) { p.medals = p.medals || {}; if (p.medals[id]) return null; p.medals[id] = Date.now(); return id; }
 /* called after every game; returns the medals newly won */
@@ -34,7 +36,8 @@ function recordGame(won) {
   if (G.units.some(u => u.team === human && rankOf(u) >= 3)) add('legend');
   if (Object.values(p.core || {}).some(l => l.length >= 8)) add('core6');
   if (s.kills >= 100) add('kills100'); if (s.subs >= 10) add('subs'); if (s.ships >= 10) add('ships');
-  if (G.waves) { const held = Math.max(0, G.waves.n - 1); s.waves = Math.max(s.waves, held); if (held >= 5) add('waves5'); if (held >= 15) add('waves15'); }
+  if (G.waves && G.waves.std !== false) { if (G.waves.zed) { const held = G.waves.best || 0; s.zed = Math.max(s.zed || 0, held); if (held >= 5) add('zed5'); if (held >= 12) add('zed12'); }   // standard settings only: a 200,000 war chest or easy waves earn no medal
+    else { const held = Math.max(0, G.waves.n - 1); s.waves = Math.max(s.waves, held); if (held >= 5) add('waves5'); if (held >= 15) add('waves15'); } }
   if (won && ['ger', 'ger40', 'jp'].includes(G.teams[human].nat)) add('axis');
   if (won && G.teams[human].nat === 'cn') add('resist');
   for (const c of CAMPAIGNS) if (c.missions.every(id => p.done[id])) add('camp:' + c.id);
@@ -59,7 +62,7 @@ function medalCanvas(id, s = 1) {
 function openRecord() {
   const p = loadProg(), s = stat(p), el = $('#reclist'); el.innerHTML = '';
   const st = document.createElement('div'); st.className = 'recstats';
-  st.innerHTML = [['Battles', s.battles], ['Victories', s.wins], ['Enemy destroyed', s.kills], ['Own losses', s.lost], ['U-boats sunk', s.subs], ['Capital ships sunk', s.ships], ['Best Last Stand', s.waves + ' waves'], ['Battles taken', Object.keys(p.done).length + ' of ' + Object.keys(MISSIONS).length]].map(([a, b]) => `<div><b>${b}</b><span>${a}</span></div>`).join('');
+  st.innerHTML = [['Battles', s.battles], ['Victories', s.wins], ['Enemy destroyed', s.kills], ['Own losses', s.lost], ['U-boats sunk', s.subs], ['Capital ships sunk', s.ships], ['Best Last Stand', s.waves + ' waves'], ['Best Dead of Night', (s.zed || 0) + ' waves'], ['Battles won', Object.keys(p.done).length + ' of ' + Object.keys(MISSIONS).length]].map(([a, b]) => `<div><b>${b}</b><span>${a}</span></div>`).join('');
   el.append(st);
   const all = [...MEDALS.map(m => [m.id, m.n, m.txt]), ...CAMPAIGNS.map(c => ['camp:' + c.id, (CAMPAIGN_MEDAL[c.id] || ['Campaign medal'])[0], `Complete ${c.name}.`])];
   const grid = document.createElement('div'); grid.className = 'medgrid';

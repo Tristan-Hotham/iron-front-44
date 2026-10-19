@@ -161,7 +161,9 @@ Object.assign(PLANES, {
 });
 
 /* ---------- warships, U-boats and merchantmen ---------- */
-const wake = (P, x0, x1, y, f) => { P.R(x1 - 3, y + 2, 4, 1, '#e8f0f4'); for (let i = 0; i < 6; i++) P.circ(x0 + i * 3 + (f % 3), y + 3, .5, 'rgba(232,240,244,.8)'); };
+const wake = (P, x0, x1, y, f) => {                   // the bow wave, and foam streaming aft along the waterline (flat streaks: dots read as road wheels once outlined)
+  P.R(x1 - 4, y + 1.6, 5, .8, '#e8f0f4');
+  for (let i = 0; i < 3; i++) P.R(x0 + 1 + i * 7 + (f % 3), y + 2.1 + (i % 2) * .3, 4.5 - i * .6, .5, 'rgba(232,240,244,.75)'); };
 function hullShape(P, x0, x1, y, h, col, sheer = 1) { P.poly([[x0, y - h + 1], [x0 + 3, y - h], [x1 - 6, y - h - .3], [x1, y - h - sheer], [x1 - 3, y + 2], [x0 + 3, y + 2]], col); P.R(x0 + 2, y - h, x1 - x0 - 6, .8, shade(col, -.25)); }
 function turret(P, x, y, dir, len, col, big = 1) { P.poly([[x - 2 * big, y + 1], [x - 1.5 * big, y - 1.4 * big], [x + 1.5 * big, y - 1.4 * big], [x + 2 * big, y + 1]], col); P.R(dir > 0 ? x + 1.5 * big : x - 1.5 * big - len, y - .7 * big, len, .5, '#2a2e34'); P.R(dir > 0 ? x + 1.5 * big : x - 1.5 * big - len, y - .1 * big, len, .5, '#2a2e34'); }
 function capital(P, f, o) {

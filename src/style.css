@@ -230,7 +230,9 @@ select, input[type=range] { font: inherit; background: var(--drab2); color: var(
 #nowplaying { position: fixed; right: 12px; bottom: 74px; z-index: 9; font-family: var(--type); font-size: 13px; background: #000b; padding: 6px 10px; opacity: 0; transition: opacity .6s; pointer-events: none; }
 #nowplaying.show { opacity: 1; }
 @media (max-width: 640px) {
-  .co .pt canvas { width: 44px; height: 44px; } .cobody .nm { font-size: 13px; } .mid { display: none; }
+  .co .pt canvas { width: 44px; height: 44px; } .cobody .nm { font-size: 13px; }
+  .mid { padding: 2px 6px; max-width: 34vw; } .mid b { font-size: 14px; } .mid #turnno { display: none; }   /* on a phone the day and objective stay: a timed battle needs its clock */
+  .mid #goal { font-size: 10px; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   #tinfo { font-size: 11px; } #uinfo canvas { width: 40px; height: 40px; } .acts button { font-size: 13px; padding: 6px 9px; }
 }
 @media (prefers-reduced-motion: reduce) { #banner.show { animation-duration: .01s; } #cop, #scop { animation: none; } }
@@ -364,3 +366,42 @@ body.pad :focus { outline: 3px solid var(--brass) !important; outline-offset: 2p
 .forcegrid label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .forcegrid input { width: 52px; flex: none; }
 .forcebox { grid-column: 1 / -1; }
+
+/* Map Builder: the saved-maps manager */
+.edlist{max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.edrow{display:flex;gap:8px;align-items:center}.edrow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* settings: progress file and field notes */
+#settings .row{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}#settings .note{margin:0 0 6px;font-size:.9em;opacity:.85}#progmsg{display:block;min-height:1.2em}
+
+/* online games list: resign / cancel */
+.netrow{display:flex;gap:6px;align-items:stretch}.netrow .netgame{flex:1}.netgame-x{flex:0 0 auto;font-size:.85em;opacity:.8}
+
+/* hide the interface to see the map (button, or V); the game still takes taps and keys underneath */
+#viewbtns { position: fixed; right: 10px; top: 50%; transform: translateY(-50%); z-index: 12; display: flex; flex-direction: column; gap: 6px; }
+#viewbtns button { font-family: var(--display); font-size: 13px; letter-spacing: .05em; text-transform: uppercase; min-width: 44px; min-height: 40px; padding: 4px 8px; background: #23251acc; color: var(--ink); border: 2px solid var(--line); opacity: .85; }
+#viewbtns #zoomin, #viewbtns #zoomout { font-size: 22px; line-height: 1; }
+#viewbtns button.on { border-color: var(--brass); }
+#viewbtns button:hover, #viewbtns button:focus-visible { opacity: 1; }
+body.hudless #top, body.hudless #bottom, body.hudless #minimap, body.hudless #nowplaying { display: none !important; }
+body.hudless #viewbtns #maptoggle { display: none; }
+/* phones: a smaller interface, so more of the map shows */
+@media (max-width: 640px), (max-height: 480px) {
+  #top { gap: 4px !important; padding: 4px !important; }
+  .co { padding: 3px 5px !important; gap: 5px !important; }
+  .co .pt canvas { width: 34px !important; height: 34px !important; } .cobody .nm { font-size: 12px; } .cobody { font-size: 11px; }   /* portraitCanvas sets an inline size */
+  .cobody .fund::before { content: ''; } .meter i { width: 7px; height: 7px; } .meter i.big { width: 9px; height: 9px; }
+  .mid b { font-size: 13px; } .mid #goal { font-size: 9.5px; -webkit-line-clamp: 2; }
+  #bottom { padding: 4px; gap: 4px; }
+  #tinfo, #uinfo { padding: 3px 6px; font-size: 10.5px; } #tinfo b, #uinfo b { font-size: 13px; }
+  #tinfo .mvc, #tinfo .tip, #uinfo .nm2 { display: none; }
+  #uinfo canvas { width: 32px; height: 32px; }
+  .acts { gap: 4px; } .acts button { font-size: 11.5px; padding: 5px 7px; letter-spacing: .03em; }
+  #minimap { width: 120px; max-width: 30vw; top: 58px; }
+  #viewbtns { right: 4px; gap: 4px; } #viewbtns button { min-width: 38px; min-height: 36px; font-size: 11px; padding: 2px 4px; } #viewbtns button span { display: none; }
+  #forecast { top: 64px; font-size: 12.5px; padding: 6px 10px; }
+  #dialog { bottom: 70px; padding: 8px; gap: 8px; } #dialog .txt { font-size: 14.5px; } #dialog canvas { width: 56px; height: auto; }
+}
+
+/* Netlify injects a badge iframe over the bottom corner of every page it serves; on phones it covered End turn (learned from Neon Protocol) */
+#nl-badge-frame { display: none !important; }

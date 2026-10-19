@@ -78,8 +78,8 @@ const MISSIONS = {
     p1:{nat:'us', co:'bradley', funds:4000}, income:{2:.25}, pin:true,
     p2:{nat:'ger', co:'rommel', funds:0, u:{nest:{n:'MG 42 Widerstandsnest', w:'MG 42s firing down the length of the beach in interlocking fields', pow:1.25, rng:[1, 6]},
       mortar:{n:'Granatwerfer (ranged on the beach)', w:'81 mm mortars, every yard of sand pre-registered', rng:[2, 8]}}},
-    objective:{win:'hq'}, goal:'Get off the beach: wade in, cross the sand to the shingle, open the four draws, then take the 352nd Division\'s command post at Trévières.',
-    brief:'H-Hour, 06:30. The 1st and 29th Infantry Divisions go in against four miles of beach under 100-foot bluffs. The bombers have missed, most of the amphibious tanks have foundered, and the tide is covering the obstacle belt. Fourteen Widerstandsnester cover the beach, their MG 42s sited to fire along it and their 88s in casemates aimed at the sand, not the sea. The only ways off are the four draws: D-1 Vierville, D-3 Les Moulins, E-1 Saint-Laurent and E-3 Colleville. Engineers can blow lanes through obstacles and wire. The beachhead supply dumps can land reinforcements once the beach is held. Bring the destroyers in close; they will be decisive.',
+    objective:{win:'hq'}, goal:'Get off the beach: wade in, cross the sand to the shingle, open the draws, then take the 916th Grenadier Regiment\'s command post at Trévières.',
+    brief:'H-Hour, 06:30. The 1st and 29th Infantry Divisions go in against four miles of beach under 100-foot bluffs. The bombers have missed, most of the amphibious tanks have foundered, and the tide is covering the obstacle belt. Fourteen Widerstandsnester cover the beach, their MG 42s sited to fire along it and their 88s in casemates aimed at the sand, not the sea. The only ways off are five draws: D-1 Vierville, D-3 Les Moulins, E-1 Saint-Laurent, E-3 Colleville and F-1. Engineers can blow lanes through obstacles and wire. The beachhead supply dumps can land reinforcements once the beach is held. Bring the destroyers in close; they will be decisive.',
     build:() => { const b = MB(48, 30, 'h', 202);
       b.blobs('.', 34, 0, 0, 47, 13, 1, 2).blobs(',', 12, 0, 0, 47, 12, 1, 2).blobs('T', 7, 0, 0, 47, 10, 1, 2);
       b.rect(0, 27, 47, 29, '~').rect(0, 25, 47, 26, 'S').rect(0, 24, 47, 24, 'O');       // the boats ground on the sandbars: two rows of wading, then the obstacles
@@ -107,7 +107,7 @@ const MISSIONS = {
 
   pegasus: {name:'Pegasus Bridge', place:'Bénouville, Caen Canal', date:'6 June 1944, 00:16', theme:'normandy', weather:'clear',
     p1:{nat:'uk', co:'monty', funds:0}, p2:{nat:'ger', co:'rommel', funds:2000}, income:{2:.7},
-    objective:{win:'survive', days:8}, goal:'Hold the Café Gondrée and both bridges until {survive}.',
+    objective:{win:'survive', days:8, hold:2}, goal:'Hold the Café Gondrée and both bridges until {survive}.',
     brief:'Major John Howard\'s glider-borne company of the Ox and Bucks has taken the Caen Canal and Orne bridges intact in ten minutes. The Café Gondrée is the first house in France to be liberated, and the 6th Airborne\'s paratroops are digging in around Ranville. Now 21st Panzer Division is coming. Hold until Lord Lovat\'s commandos fight their way up from Sword Beach, piper and all.',
     build:() => { const b = MB(36, 22, '.', 303);
       b.blobs('h', 20, 0, 0, 35, 21, 1, 2).blobs(',', 6, 0, 0, 35, 21, 1, 2).blobs('T', 10, 26, 12, 35, 21, 1, 3);
@@ -118,10 +118,12 @@ const MISSIONS = {
       return b.rows(); },
     units:{1:'inf*3 13,8-16,11; at 14,11; inf*3 16,9-20,12; at 18,10; inf*3 23,7-28,11; art 25,9; mortar 13,7; at 24,10; mortar 25,11',
       2:'tank 3,19; tank 31,19; inf*4 2,15-10,20; inf*3 26,14-34,20; recon 12,20; at*2 6,16-30,18; art 33,21; mortar 9,18'},
-    events:[{day:3, team:2, say:'21st Panzer commits its Panzer IVs from Caen.', spawn:'tank*2 0,17-6,21; inf 30,19-35,21'},
-      {day:4, team:1, say:'Bagpipes from the north: Lord Lovat\'s 1st Special Service Brigade has arrived, with Piper Bill Millin playing.', spawn:'inf*4 0,8-3,12; tank 0,10; mtank 1,10'}]},
+    events:[{day:2, team:2, say:'The bridge guards of the 716th Division counter-attack out of Bénouville, with a Panzer IV from Ranville.', spawn:'inf*3 8,12-11,16; tank 9,14; inf*2 29,13-33,16'},
+      {day:3, team:2, say:'21st Panzer commits its Panzer IVs from Caen.', spawn:'tank*2 0,17-6,21; inf 30,19-35,21'},
+      {day:4, team:1, say:'Bagpipes from the north: Lord Lovat\'s 1st Special Service Brigade has arrived, with Piper Bill Millin playing.', spawn:'inf*4 0,8-3,12; tank 0,10; mtank 1,10'},
+      {day:6, team:2, say:'The 125th Panzergrenadier Regiment counter-attacks towards the Orne bridge with Panzer IVs in support.', spawn:'mtank*2 28,15-33,19; inf*3 27,14-34,19'}]},
 
-  carentan: {name:'Carentan', place:'Purple Heart Lane', date:'12 June 1944', theme:'normandy', weather:'overcast',
+  carentan: {name:'Carentan', place:'Purple Heart Lane', date:'10–12 June 1944', theme:'normandy', weather:'overcast',
     p1:{nat:'us', co:'mcauliffe', funds:0}, p2:{nat:'ger', co:'rommel', funds:0}, income:{2:.4},
     objective:{win:'hq'}, goal:'Cross the causeway and its four bridges, and take Carentan to link Utah and Omaha beaches.',
     brief:'Carentan sits between the two American beaches. The only way in from the north is a raised causeway across flooded marsh, with four bridges over the Douve and its channels. Paratroopers of the 101st Airborne call it Purple Heart Lane. Fallschirmjäger Regiment 6 holds the hedgerows at the far end. Take the town before the German armour arrives.',
@@ -195,7 +197,7 @@ const MISSIONS = {
     units:{1:'tank*2 10,1-28,3; inf*3 8,0-30,3; at 14,3; art 22,0; tank*3 6,21-26,24; mtank 14,22; inf*4 4,21-28,24; art*2 10,24-20,25; rkt 18,24; ftr 26,25; bmr 24,24; recon 20,22; inf*2 34,9-36,11 7; at 35,10 7',
       2:'tank*3 6,9-24,15 6; mtank*2 10,9-24,15 7; htank 15,12 5; inf*8 4,7-26,17 6; at*2 8,9-24,15; art*2 8,9-24,15 8; apc*2 8,9-24,15; recon 18,8 8; aa 20,12 6; tank*2 38,9-39,15; inf*2 36,7-39,17'}},
 
-  paris: {name:'The Liberation of Paris', place:'Paris', date:'25 August 1944', theme:'paris', weather:'clear',
+  paris: {name:'The Liberation of Paris', place:'Paris', date:'24–25 August 1944', theme:'paris', weather:'clear',
     p1:{nat:'fr', co:'leclerc', funds:5000}, p2:{nat:'ger', co:'choltitz', funds:0}, income:{2:.3},
     objective:{win:'hq', limit:20}, goal:'Fight in from the Porte d\'Orléans, link up with the Resistance and take General von Choltitz\'s headquarters at the Hôtel Meurice by {limit}.',
     brief:'The Resistance has risen in Paris and holds the Hôtel de Ville. Eisenhower has let Leclerc\'s 2e Division Blindée go first. The first half-tracks into the city are named after Spanish Civil War battles: they belong to La Nueve, Spanish Republicans in French uniform. Von Choltitz holds strongpoints at the Luxembourg, the École Militaire and the Chamber of Deputies. He has been ordered to leave the city in ruins.',
@@ -243,7 +245,7 @@ const MISSIONS = {
 
   bastogne: {name:'Bastogne', place:'The Ardennes, Belgium', date:'20 December 1944', theme:'winter', weather:'snow',
     p1:{nat:'us', co:'mcauliffe', funds:0}, p2:{nat:'ger', co:'model', funds:3000}, income:{2:.8},
-    objective:{win:'survive', days:8}, goal:'Hold Bastogne until {survive}. Patton\'s Third Army is on its way.',
+    objective:{win:'survive', days:8, hold:6}, goal:'Hold Bastogne and all five of its outposts until {survive}. Patton\'s Third Army is on its way.',
     brief:'The Germans attacked through the Ardennes in fog and snow. Seven roads meet at Bastogne, and the 101st Airborne got there first. Now the town is surrounded, short of ammunition and winter clothing, with no air support while the clouds stay low. The German commander has sent a demand to surrender. General McAuliffe\'s reply: "NUTS!"',
     build:() => { const b = MB(36, 26, '.', 1212);
       b.blobs('T', 22, 0, 0, 35, 25, 1, 2).blobs('^', 4, 0, 0, 35, 25, 1, 1, ['.']);
@@ -253,8 +255,10 @@ const MISSIONS = {
       return b.rows(); },
     units:{1:'inf*6 14,10-22,16; at*3 14,10-22,16; art*2 17,12-19,14; mtank*2 15,11-21,15; tank 19,14; eng 17,15; mortar*2 15,10-21,16',
       2:'tank*3 4,2-32,6; mtank*2 26,4-33,10; inf*8 2,2-34,24; at*2 4,8-30,20; art*2 2,10-33,14; rkt*2 4,3-32,22; recon 30,18'},
-    events:[{day:3, team:2, say:'The Führer Begleit Brigade joins the assault.', spawn:'mtank*2 33,20-35,25; inf*2 30,20-35,25'},
-      {day:4, team:1, say:'23 December. The skies clear. C-47s drop supplies and P-47s return to the sky.', funds:6000, heal:2, spawn:'bmr 18,13'},
+    events:[{day:2, team:2, say:'Panzer Lehr and the 26th Volksgrenadiers close in on the perimeter from the east.', spawn:'mtank*2 24,10-27,16; inf*3 23,9-27,17'},
+      {day:3, team:2, say:'The Führer Begleit Brigade joins the assault.', spawn:'mtank*2 33,20-35,25; inf*2 30,20-35,25'},
+      {day:4, team:1, say:'23 December. The skies clear. C-47s drop supplies and P-47s return to the sky.', funds:3000, heal:1, spawn:'bmr 18,13'},
+      {day:5, team:2, say:'Christmas Day: the 15th Panzergrenadier Division attacks out of the dark from the north-west, its tanks whitewashed for the snow.', spawn:'mtank*2 8,4-12,8; tank 10,6; inf*3 7,5-13,10'},
       {day:7, team:1, say:'26 December: Patton\'s 4th Armored Division breaks through from the south!', spawn:'tank*3 16,23-20,25; mtank 18,24; inf*2 15,22-21,25; recon 18,25'}]},
 
   remagen: {name:'The Bridge at Remagen', place:'Ludendorff Bridge, Rhine', date:'7 March 1945', theme:'spring', weather:'overcast',
@@ -274,7 +278,7 @@ const MISSIONS = {
   prokhorovka: {name:'Prokhorovka', place:'Kursk salient', date:'12 July 1943', theme:'steppe', weather:'clear',
     p1:{nat:'su', co:'konev', funds:10000}, p2:{nat:'ger', co:'manstein', funds:0}, income:{2:.2},
     objective:{win:'hq'}, goal:'Meet the panzers head on, close the range so the Tigers lose their advantage, and take Hill 252.2.',
-    brief:'The greatest tank battle of the war. Rotmistrov\'s 5th Guards Tank Army charges across the wheat at the panzers of Army Group South. The T-34s must close fast: at range the Tigers\' 88s outshoot everything. The Psel river guards your right flank and a railway embankment cuts across the field.',
+    brief:'One of the largest tank battles of the war. Rotmistrov\'s 5th Guards Tank Army charges across the wheat at the panzers of Army Group South. The T-34s must close fast: at range the Tigers\' 88s outshoot everything. The Psel river guards your right flank and a railway embankment cuts across the field.',
     build:() => { const b = MB(40, 24, ',', 1414);
       b.blobs('.', 16, 0, 0, 39, 23, 1, 3).blobs('T', 6, 0, 0, 39, 23, 1, 1).blobs('^', 4, 20, 8, 32, 16, 1, 2);
       b.river([[0, 2], [39, 3]], .2);
@@ -288,7 +292,7 @@ const MISSIONS = {
   bagration: {name:'Operation Bagration', place:'Bobruisk, Belorussia', date:'24 June 1944', theme:'normandy', weather:'clear',
     p1:{nat:'su', co:'rokossovsky', funds:6000}, p2:{nat:'ger', co:'model', funds:2000}, income:{2:.5},
     objective:{win:'hq'}, goal:'Come through the "impassable" marshes, break the line and take Bobruisk on the Berezina.',
-    brief:'Three years to the day after Barbarossa, four Soviet fronts fall on Army Group Centre. Rokossovsky insists on two main blows, one of them straight through the Pripyat marshes, where sappers lay corduroy roads of logs. The Germans think nothing can come that way.',
+    brief:'Three years almost to the day after Barbarossa, four Soviet fronts fall on Army Group Centre. Rokossovsky insists on two main blows, one of them straight through the Pripyat marshes, where sappers lay corduroy roads of logs. The Germans think nothing can come that way.',
     build:() => { const b = MB(40, 26, '.', 1515);
       b.blobs('T', 18, 0, 0, 39, 25, 1, 3).blobs('v', 16, 0, 14, 26, 25, 1, 3).blobs('v', 8, 0, 0, 26, 12, 1, 2);
       b.river([[28, 0], [27, 12], [29, 25]], .2);
@@ -335,7 +339,7 @@ const MISSIONS = {
   berlin: {name:'The Reichstag', place:'Berlin', date:'30 April 1945', theme:'city', weather:'smoke',
     p1:{nat:'su', co:'chuikov', funds:10000}, p2:{nat:'ger', co:'heinrici', funds:2000}, income:{2:.5},
     objective:{win:'hq'}, goal:'Cross the Moltke Bridge, take the Interior Ministry, and raise the banner over the Reichstag.',
-    brief:'Soviet troops are fighting through the government quarter. Across the Spree stands the Reichstag, defended by Volkssturm, Hitler Youth with Panzerfausts, and the remnants of the panzer divisions. The Zoo flak tower still commands the Tiergarten. Hitler has shot himself in the bunker this afternoon. Finish it.',
+    brief:'Soviet troops are fighting through the government quarter. Across the Spree stands the Reichstag, defended by Volkssturm, Hitler Youth with Panzerfausts, and the remnants of the panzer divisions. The Zoo flak tower still commands the Tiergarten. Hitler is in his bunker under the Chancellery. Finish it.',
     build:() => { const b = MB(40, 26, 'x', 1818);
       b.blobs('U', 26, 0, 0, 39, 25, 1, 2);
       b.river([[0, 8], [39, 9]], .1);
@@ -378,8 +382,8 @@ const MISSIONS = {
 
   wacht: {name:'Wacht am Rhein', place:'The Schnee Eifel, Ardennes', date:'16 December 1944', theme:'winter', weather:'fog',
     p1:{nat:'ger', co:'model', funds:6000}, p2:{nat:'us', co:'bradley', funds:1000}, income:{2:.35},
-    objective:{win:'hq', limit:16}, goal:'Break through the thin American line in the fog and take the road junction at St. Vith by {limit}.',
-    brief:'Hitler\'s last gamble in the West: three armies attack through the Ardennes at dawn, under low cloud that grounds the Allied air forces. St. Vith is a vital road junction held by the green 106th Division and the 7th Armored. The weather will not last. When it breaks, the fighter-bombers will come.',
+    objective:{win:'hq', limit:16}, goal:'Break through the thin American line in the fog and take the road junction at St Vith by {limit}.',
+    brief:'Hitler\'s last gamble in the West: three armies attack through the Ardennes at dawn, under low cloud that grounds the Allied air forces. St Vith is a vital road junction held by the green 106th Division and the 7th Armored. The weather will not last. When it breaks, the fighter-bombers will come.',
     build:() => { const b = MB(40, 26, '.', 2121);
       b.blobs('T', 26, 0, 0, 39, 25, 1, 2).blobs('^', 6, 0, 0, 39, 25, 1, 2, ['.', 'T']);
       b.road([[39, 12], [8, 12]]).road([[39, 4], [20, 8], [8, 12]]).road([[39, 22], [20, 18], [8, 12]]).road([[8, 12], [0, 6]]).road([[8, 12], [0, 20]]);

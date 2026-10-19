@@ -3,7 +3,7 @@
 const UNIT_INFO = {
   // infantry and teams, by army
   'ger:inf':'A Grenadier squad was built around its MG 42, the "Hitler\'s buzzsaw" that fired 1,200 rounds a minute; the riflemen carried Mauser Kar98k bolt-actions.',
-  'us:inf':'The US rifle squad carried the semi-automatic M1 Garand, the only standard-issue self-loading rifle of the war, backed by a Browning Automatic Rifle.',
+  'us:inf':'The US rifle squad carried the semi-automatic M1 Garand, the first self-loading rifle adopted as an army\'s standard service rifle, backed by a Browning Automatic Rifle.',
   'uk:inf':'British sections were built around the Bren light machine gun, accurate and reliable, with riflemen carrying the Lee-Enfield No. 4.',
   'su:inf':'Soviet strelki fought in mass, many armed with the PPSh-41 submachine gun and its 71-round drum, ideal for street fighting.',
   'fr:inf':'The Régiment de Marche du Tchad was raised in French Africa and fought from Normandy to Berchtesgaden in American equipment.',
@@ -49,7 +49,7 @@ const UNIT_INFO = {
   p51:'The P-51 Mustang with its Rolls-Royce Merlin could escort bombers all the way to Berlin. Black and white invasion stripes marked Allied aircraft from D-Day.',
   p47:'The P-47 Thunderbolt was huge and rugged, the great fighter-bomber of the Normandy campaign.',
   lcvp:'The Higgins boat carried 36 men or a jeep; Eisenhower said Andrew Higgins was "the man who won the war for us".',
-  fletcher:'Fletcher-class destroyers came close to Omaha Beach on D-Day, scraping the bottom, to fire point-blank into the strongpoints.',
+  fletcher:'American destroyers came close to Omaha Beach on D-Day, scraping the bottom, to fire point-blank into the strongpoints.',
   daimler:'The Daimler armoured car carried a 2-pounder gun, unusual firepower for a reconnaissance vehicle.',
   carrier:'The Universal Carrier, or Bren Carrier, was the most produced armoured vehicle of the war: about 113,000.',
   cromwell:'The Cromwell was the fastest tank in Normandy, reaching 40 mph, but under-gunned with its 75 mm.',
@@ -91,9 +91,15 @@ const RANK_ORDER = 'DCBAS';
 /* ---------- first-time tips ---------- */
 const TIPS_SEEN = (() => { try { return new Set(JSON.parse(localStorage.getItem('if44tips') || '[]')); } catch (e) { return new Set(); } })();
 function tip(id, html) {
-  if (FAST || TIPS_SEEN.has(id) || !SET.tips) return;
-  TIPS_SEEN.add(id); try { localStorage.setItem('if44tips', JSON.stringify([...TIPS_SEEN])); } catch (e) {}
-  const el = $('#tip'); el.innerHTML = `<b>Field note</b><span>${html}</span><button>Got it</button>`; el.hidden = false;
-  el.querySelector('button').onclick = () => { el.hidden = true; };
-  clearTimeout(tip.t); tip.t = setTimeout(() => { el.hidden = true; }, 11000);
+  if (FAST || TIPS_SEEN.has(id) || !SET.tips || TIP_Q.some(q => q.id === id)) return;
+  TIP_Q.push({id, html}); if ($('#tip').hidden) tipNext();      // notes queue up rather than replacing each other, and each stays until "Got it"
 }
+const TIP_Q = [];
+function tipNext() {
+  const el = $('#tip'), q = TIP_Q.shift(); if (!q) { el.hidden = true; return; }
+  TIPS_SEEN.add(q.id); try { localStorage.setItem('if44tips', JSON.stringify([...TIPS_SEEN])); } catch (e) {}   // seen once it is actually shown
+  el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+  el.innerHTML = `<b>Field note</b><span>${q.html}</span><button>Got it${TIP_Q.length ? ` (${TIP_Q.length} more)` : ''}</button>`; el.hidden = false;
+  el.querySelector('button').onclick = tipNext;
+}
+function tipsReset() { TIPS_SEEN.clear(); try { localStorage.removeItem('if44tips'); } catch (e) {} }

@@ -5,7 +5,7 @@
    the Nationalists and the Communists wrote it then. */
 const BARK_LINES = {
   ger:{sel:['Jawohl!', 'Zu Befehl!', 'Verstanden!', 'Jawohl, Herr Leutnant!', 'Los, los!'], veh:['Panzer marsch!', 'Motor läuft!', 'Fahrer, vorwärts!', 'Luke zu!', 'Jawohl!'],
-    move:['Vorwärts!', 'Marsch, marsch!', 'Mir nach!', 'Schneller!', 'Ausschwärmen!'], atk:['Feuer frei!', 'Feuer!', 'Ziel erkannt!', 'Gib ihm!', 'Handgranate!'],
+    move:['Vorwärts!', 'Marsch, marsch!', 'Mir nach!', 'Schneller!', 'Ausschwärmen!'], atk:['Feuer frei!', 'Feuer!', 'Ziel erkannt!', 'Gib’s ihm!', 'Handgranate!'],
     kill:['Volltreffer!', 'Erledigt!', 'Abschuss!', 'Der ist hin!', 'Treffer!'], hurt:['Sanitäter!', 'Deckung!', 'Rückzug!', 'Ich bin getroffen!', 'Verdammt!'],
     cap:['Gesichert!', 'Stellung genommen!', 'Das gehört jetzt uns!'], new:['Zur Stelle!', 'Melde mich zum Dienst!', 'Bereit!'],
     idle:['Hat einer Feuer?', 'Wo bleibt die Gulaschkanone?', 'Wann geht\'s nach Hause?', 'Zu ruhig hier…', 'Schreib mal wieder, Mutti…', 'Kalt heute.']},
@@ -52,14 +52,20 @@ const BARK_LINES = {
 };
 // variants: Marines call for a corpsman, the Belgians speak Flemish as well as French, the desert armies talk about sand
 BARK_LINES.usp = {...BARK_LINES.us, hurt:['Corpsman!', 'Corpsman up!', 'Get down!', 'I\'m hit!'], idle:BARK_LINES.us.idle.concat(['Semper fi, Mac.', 'Another damn island…'])};
-BARK_LINES.be = {...BARK_LINES.fr, sel:BARK_LINES.fr.sel.concat(['Ja, commandant!', 'Begrepen!']), atk:BARK_LINES.fr.atk.concat(['Vuur!', 'Schiet!']), move:BARK_LINES.fr.move.concat(['Vooruit!', 'Volg mij!'])};
-BARK_LINES.fr40 = BARK_LINES.fr; BARK_LINES.ffl = BARK_LINES.fr;
-BARK_LINES.dak = {...BARK_LINES.ger, idle:['Sand… überall Sand.', 'Wasser!', 'Für ein kühles Bier…', 'Diese Fliegen!', 'Hat einer Feuer?']};
+/* the Belgian army of 1940 speaks French and Flemish, and fights for Belgium, not France */
+BARK_LINES.be = {...BARK_LINES.fr, sel:BARK_LINES.fr.sel.concat(['Ja, commandant!', 'Begrepen!']), move:BARK_LINES.fr.move.concat(['Vooruit!', 'Volg mij!']),
+  atk:['Feu!', 'Tirez!', 'Vive la Belgique!', 'Feu à volonté!', 'Vuur!', 'Schiet!'], cap:['Position prise!', 'C\'est à nous!', 'Genomen!'],
+  idle:['T\'as du feu?', 'Encore du singe…', 'Vivement la quille!', 'Un petit café…', 'Voor koning en vaderland.']};
+/* the French army of 1940 is not yet liberating anything */
+BARK_LINES.fr40 = {...BARK_LINES.fr, cap:['Position prise!', 'C\'est à nous!', 'Tenu!'], idle:['T\'as du feu?', 'Encore du singe…', 'Vivement la quille!', 'Ils ne passeront pas.', 'Un petit café…']};
+BARK_LINES.ffl = BARK_LINES.fr;
+/* the Red Army of 1941 is fighting for Moscow, not dreaming of Berlin */
+BARK_LINES.su41 = {...BARK_LINES.su, idle:['Махорка есть?', 'Где же кухня?', 'Эх, Катюша…', 'Письмо бы из дома…', 'Холодно, братцы.', 'Москва за нами!']};
+BARK_LINES.dak = {...BARK_LINES.ger, idle:['Sand… überall Sand.', 'Wasser!', 'Was gäb ich für ein kühles Bier…', 'Diese Fliegen!', 'Hat einer Feuer?']};
 BARK_LINES.uk42 = {...BARK_LINES.uk, idle:['Flies, flies, flies…', 'Bloody sand.', 'Brew up, lads?', 'Fancy a swim at Alex?', 'Bully beef again…']};
 for (const [k, v] of Object.entries(BARK_LINES)) BARKS[k] = {...(BARKS[k] || {}), ...v};
 for (const k of ['ger40']) BARKS[k] = BARKS.ger;
 for (const k of ['uk40']) BARKS[k] = BARKS.uk;
-for (const k of ['su41']) BARKS[k] = BARKS.su;
 if (BARKS.zed) Object.assign(BARKS.zed, {move:['Hhhrrr…', 'Uuunnh…'], cap:['Hhhrrr…'], new:['Uuurgh…'], idle:['Hhhnnn…', 'Grrr…', 'Uuurrh…']});
 
 /* idle talk: now and then, between the shooting, somebody on the map says something */

@@ -33,16 +33,53 @@ function strandedFoot(f) {
   if (!f.d.foot) return false; const goals = aiGoals(f.team, Object.assign({}, f, {cargo:[]})); if (!goals.length) return false;
   const fld = distField(f.d.mt, goals); return fld[f.y * G.W + f.x] >= 1e8;
 }
+/* under fog or at night the computer knows only what its own units can see (and the map: towns and HQs don't move) */
+const AI_SEEN = {key:null, vis:null};
+function aiFoes(team) {
+  const all = G.units.filter(o => o.team !== team);
+  if (!(G.fog || isNight()) || (NATION[G.teams[team].nat] || {}).zed) return all;     // the dead hunt by smell
+  const key = team + ':' + G.day + ':' + G.units.filter(o => o.team === team).map(o => o.id + '@' + o.x + ',' + o.y).join(';');
+  if (AI_SEEN.key !== key || AI_SEEN.g !== G) { AI_SEEN.key = key; AI_SEEN.g = G; AI_SEEN.vis = computeVision(team); }
+  const vis = all.filter(o => AI_SEEN.vis[o.y * G.W + o.x] || o.revealed);
+  const mem = G.aiMem || (G.aiMem = {1:{}, 2:{}}); for (const o of vis) mem[team][o.id] = [o.x, o.y];   // what it has seen, it remembers
+  return vis;
+}
+/* where to head (not what to shoot): what it can see, where it last saw the rest, and the battle's objective,
+   which the briefing gave away; if it knows of nothing at all, the general direction of the enemy */
+function aiKnown(team) {
+  const vis = aiFoes(team), all = G.units.filter(o => o.team !== team); if (vis.length === all.length) return vis;
+  const mem = (G.aiMem || {})[team] || {}, o = G.objective, out = vis.slice(), have = new Set(vis.map(f => f.id));
+  for (const f of all) if (!have.has(f.id)) {
+    if (f.role === o.role || f.role === o.protect) out.push(f);
+    else if (mem[f.id]) out.push(Object.assign(Object.create(Object.getPrototypeOf(f)), f, {x:mem[f.id][0], y:mem[f.id][1]}));
+  }
+  return out.length ? out : all;
+}
+/* an aircraft turns for home when the flight back would use what fuel it has left, plus a day in hand */
+function lowFuel(u) {
+  if (!u.d.air || u.fuel == null || !usesFuel(u)) return false;
+  const o = G.objective, left = o.limit ? o.limit - G.day + 1 : o.days ? o.days - G.day + 1 : 99;
+  if (left < u.fuel) return false;                                 // the battle will be over before it runs dry: keep fighting
+  let best = 1e9; for (const p of Object.values(G.props)) if (p.owner === u.team && AIR_FIELDS.has(terr(p.x, p.y))) best = Math.min(best, dist(u, p));
+  for (const c of G.units) if (c.team === u.team && c.d.carrier) best = Math.min(best, Math.max(0, dist(u, c) - 1));
+  best = Math.max(0, best - 1);                                     // beside the field will do
+  return u.fuel <= Math.ceil(best / Math.max(1, moveOf(u))) + 1;
+}
 function enemyHQ(team) { return Object.values(G.props).filter(p => p.owner === enemyOf(team) && terr(p.x, p.y) === 'hq'); }
 function aiGoals(team, u) {
-  const foes = G.units.filter(o => o.team !== team);
+  const foes = aiKnown(team);
   const myHQ = Object.values(G.props).find(p => p.owner === team && terr(p.x, p.y) === 'hq');
   const o = G.objective;
   if (u.d.carry && u.d.sea && !u.cargo.length) {                // empty landing craft: go to a beach next to infantry who need a lift
     const pick = []; for (const f of G.units) if (f.team === team && canCarry(u, f) && strandedFoot(f)) for (const [dx, dy] of [[0, 0], ...DIRS]) { const x = f.x + dx, y = f.y + dy; if (inside(x, y) && moveCost(u.d, x, y) && moveCost(f.d, x, y)) pick.push([x, y]); }
     if (pick.length) return pick;
   }
-  if (o.win === 'convoy' && team === 1 && u.role === o.role) return zoneTiles(o.exit);                       // merchantmen steam for harbour
+  if (lowFuel(u)) {                                              // low on fuel: home to an airfield or the carrier
+    const bases = []; for (const p of Object.values(G.props)) if (p.owner === team && AIR_FIELDS.has(terr(p.x, p.y))) for (const [dx, dy] of [[0, 0], ...DIRS]) { const x = p.x + dx, y = p.y + dy; if (inside(x, y) && moveCost(u.d, x, y) && !G.units.some(f => f !== u && f.x === x && f.y === y)) bases.push([x, y]); }
+    for (const c of G.units) if (c.team === team && c.d.carrier) for (const [dx, dy] of DIRS) if (inside(c.x + dx, c.y + dy) && !unitAt(c.x + dx, c.y + dy)) bases.push([c.x + dx, c.y + dy]);
+    if (bases.length) return bases;
+  }
+  if (o.win === 'convoy' && team === 1 && u.role === o.role) return zoneTiles(o.exit);                      // merchantmen steam for harbour
   if (o.escape && team === 2 && u.role === o.role && (o.flee === 'always' || u.hp <= 50)) return zoneTiles(o.escape);   // the quarry runs for safety
   if (o.win === 'convoy' && team === 2) { const ships = foes.filter(f => f.role === o.role); if (ships.length && canHit(u, ships[0])) return ships.map(f => [f.x, f.y]); }   // wolf packs go for the merchantmen
   if (o.win === 'kill' && team === 1) { const tg = foes.filter(f => f.role === o.role && canHit(u, f)); if (tg.length && !u.d.cap) return tg.map(f => [f.x, f.y]); if (tg.length && (u.d.foot || u.d.armour)) return tg.map(f => [f.x, f.y]); }
@@ -61,11 +98,12 @@ function aiGoals(team, u) {
   return (hit.length ? hit : foes).map(o => [o.x, o.y]).concat(enemyHQ(team).map(p => [p.x, p.y]));
 }
 function planUnit(u, cache) {
-  const team = u.team, r = reach(u), foes = G.units.filter(o => o.team !== team);
+  const team = u.team, r = reach(u), foes = aiFoes(team);
   let best = {score:-1e9};
   const myHQ = Object.values(G.props).find(p => p.owner === team && terr(p.x, p.y) === 'hq');
   const climb = u.d.foot && hasClimb(team);
-  const goalKey = u.d.mt + (u.d.foot ? (u.d.cap ? 'F' + u.id : 'f') : 'X') + (u.cargo.length ? 'L' : '') + (u.d.indirect ? 'I' : '') + ':' + (G.objective.role === u.role || G.objective.protect ? u.role : '') + (u.d.sub ? 'S' : '');
+  const homing = lowFuel(u);
+  const goalKey = u.d.mt + (u.d.foot ? (u.d.cap ? 'F' + u.id : 'f') : 'X') + (u.cargo.length ? 'L' : '') + (u.d.indirect ? 'I' : '') + ':' + (G.objective.role === u.role || G.objective.protect ? u.role : '') + (u.d.sub ? 'S' : '') + (homing ? 'FUEL' : '');
   if (!cache[goalKey]) {
     if (u.d.carry && u.cargo.length) {
       const cf = distField(u.cargo[0].d.mt, aiGoals(team, u.cargo[0]), climb);
@@ -80,7 +118,7 @@ function planUnit(u, cache) {
   if (!(hqKey in cache)) { const e = enemyHQ(team); cache[hqKey] = e.length ? distField(u.d.mt, e.map(p => [p.x, p.y]), climb) : null; }
   const urgency = G.objective.limit && team === 1 ? clamp(G.day / G.objective.limit, 0, 1) : G.objective.win === 'survive' && team === 2 ? clamp(G.day / G.objective.days, 0, 1) : 0;   // whoever is racing the clock presses harder as it runs down   // the closer the deadline, the harder the pull to the HQ
   const hqf = cache[hqKey], hqW = u.d.foot ? .55 : .85, late = urgency ? .7 - .35 * urgency : 1;
-  const fdAt = i => hqf && !u.cargo.length && G.objective.win !== 'kill' ? Math.min(field[i], hqf[i] * hqW * late) : field[i];
+  const fdAt = i => hqf && !u.cargo.length && G.objective.win !== 'kill' && !goalKey.endsWith('FUEL') ? Math.min(field[i], hqf[i] * hqW * late) : field[i];
   const cat = u.d.air ? 'ftr' : u.d.sea ? (u.d.sub ? 'sub' : 'dd') : u.d.armour ? (u.role === 'recon' || u.role === 'apc' ? 'recon' : 'tank') : 'inf';
   const thKey = team + ':' + G.day + ':' + G.turn + ':' + G.units.filter(o => o.team !== team).map(o => o.id).join(',');   // enemies do not move during our turn: reuse until one dies
   if (TH_CACHE.key !== thKey || TH_CACHE.g !== G) { TH_CACHE.key = thKey; TH_CACHE.g = G; TH_CACHE.maps = {}; }
@@ -88,7 +126,7 @@ function planUnit(u, cache) {
   if (cache.odds == null) { const val = t => G.units.filter(o => o.team === t).reduce((s, o) => s + o.d.cost * o.hp / 100, 0); cache.odds = val(team) / Math.max(1, val(enemyOf(team))); }
   const fearK = .3 * clamp(1.6 - cache.odds * .6, .35, 1.3) * (1 - urgency * .9) * (1 - clamp((G.day - 8) / 13, 0, .9));   // and as a battle drags on, both sides commit   // outnumbered armies are wary; a strong one, or one running out of time, takes risks
   const PW = personaOf(team);
-  if (!cache.cm) { const fs = G.units.filter(o => o.team !== team); cache.cm = fs.length ? [fs.reduce((s, o) => s + o.x, 0) / fs.length, fs.reduce((s, o) => s + o.y, 0) / fs.length] : [G.W / 2, G.H / 2]; }
+  if (!cache.cm) { const fs = aiFoes(team); cache.cm = fs.length ? [fs.reduce((s, o) => s + o.x, 0) / fs.length, fs.reduce((s, o) => s + o.y, 0) / fs.length] : [G.W / 2, G.H / 2]; }
   const tieB = (x, y) => -Math.hypot(x - cache.cm[0], y - cache.cm[1]) * .01;   // a tie-breaker that looks the same from either side of the map
   for (const n of r.values()) {
     if (u.hold && (n.x !== u.x || n.y !== u.y)) continue;
@@ -108,9 +146,12 @@ function planUnit(u, cache) {
       continue;
     }
     for (const t of targetsFrom(u, n.x, n.y, moved)) {
+      if (!foes.includes(t)) continue;                      // it cannot shoot at what it has not seen
+      if (homing && !airBase(u, n.x, n.y)) continue;           // turning for home: no more fights on the way, unless it can land after
       const dmg = expDmg(u, t, n.x, n.y), left = t.hp - dmg;
       let s = dmg * t.d.cost / 100 + (left <= 0 ? t.d.cost * .4 : 0);
       const p = propAt(t.x, t.y); if (p && p.owner === team && p.cap < 20) s += 5000;
+      if (p && p.owner === team && TER[terr(t.x, t.y)].makes) s += 3000;   // an enemy squatting on our depot, port or airfield stops production: clear it
       if (p && p.owner === t.team && terr(t.x, t.y) === 'hq') s += 2500 + (left <= 0 ? 4000 : 0);   // the unit blocking the enemy HQ must go
       if (G.objective.win === 'kill' && team === 1 && t.role === G.objective.role) s += 4000;
       if (left > 0 && dist({x:n.x, y:n.y}, t) === 1 && canCounter(t, u)) { const fake = Object.assign({}, t, {hp:left}), back = expDmg(fake, u, t.x, t.y, left); s -= back * u.d.cost / 100 * .8; if (back >= u.hp) s -= u.d.cost * .6; }   // never trade a unit for a scratch
@@ -134,7 +175,7 @@ function planUnit(u, cache) {
     if (u.cargo.length) {
       const drops = [], taken = new Set();
       for (const c of u.cargo) { const sp = unloadSpots(u, n.x, n.y, c).filter(([a, b]) => !taken.has(K(a, b)) && !TER[terr(a, b)].mines).sort((a, b) => fdAt(a[1] * G.W + a[0]) - fdAt(b[1] * G.W + b[0]))[0]; if (sp) { taken.add(K(sp[0], sp[1])); drops.push([c, sp]); } }
-      if (drops.length && (fd <= 2 || terr(n.x, n.y) === 'beach' || u.d.sea)) best = pick(best, {score:3000 + drops.length * 500 - fd * 100, u, n, act:'unload', drops});
+      if (drops.length && (fd <= 2 || (!u.d.sea && terr(n.x, n.y) === 'beach'))) best = pick(best, {score:3000 + drops.length * 500 - fd * 100, u, n, act:'unload', drops});   // landing craft put in only on the stretch of coast that leads to the objective, not the first beach they pass
     }
     const p = propAt(n.x, n.y);
     let s = base;
@@ -153,8 +194,8 @@ function pick(a, b) { return b.score > a.score ? b : a; }
 const TH_CACHE = {key:null, g:null, maps:{}};
 function threatMap(team, cat = 'inf') {
   const m = new Float32Array(G.W * G.H);
-  for (const e of G.units) {
-    if (e.team === team || e.d.rng[1] === 0) continue;
+  for (const e of aiFoes(team)) {
+    if (e.d.rng[1] === 0) continue;
     const base = (DMG[e.role] && DMG[e.role][cat]) || 0; if (!base) continue;
     const r = e.d.indirect || e.d.fixed ? new Map([[K(e.x, e.y), {x:e.x, y:e.y}]]) : reach(e, e.x, e.y);
     const [a, b] = rangeOf(e), add = Math.min(1.2 * 100, base * e.d.pow * e.hp / 100);
@@ -175,9 +216,9 @@ function aiPower(team) {
 function aiBuild(team) {
   const T = G.teams[team], out = [];
   if (NATION[T.nat] && NATION[T.nat].zed) return out;                 // the dead do not build: they recruit
-  const fo = G.units.filter(o => o.team !== team), near = p => fo.length ? Math.min(...fo.map(o => Math.hypot(o.x - p.x, o.y - p.y))) : 0;
+  const fo = aiFoes(team), near = p => fo.length ? Math.min(...fo.map(o => Math.hypot(o.x - p.x, o.y - p.y))) : 0;
   const facs = props(team).filter(p => TER[terr(p.x, p.y)].makes && !unitAt(p.x, p.y)).map(p => [p, near(p) + (fo.length ? Math.hypot(p.x - fo.reduce((s, o) => s + o.x, 0) / fo.length, p.y - fo.reduce((s, o) => s + o.y, 0) / fo.length) * .001 : 0) + Math.random() * 1e-6]).sort((a, b) => a[1] - b[1]).map(e => e[0]);   // the depot nearest the fighting buys first
-  const foes = G.units.filter(o => o.team !== team), mine = G.units.filter(o => o.team === team);
+  const foes = aiFoes(team), mine = G.units.filter(o => o.team === team);
   const foeArmour = foes.filter(o => o.d.armour).length, foeAir = foes.filter(o => o.d.air).length, myInf = mine.filter(o => o.d.foot).length;
   const neutral = Object.values(G.props).filter(p => p.owner !== team).length;
   for (const p of facs) {
@@ -201,7 +242,7 @@ function aiBuild(team) {
       s += Math.random() * 6;
       if (s > bs) { bs = s; best = r; }
     }
-    if (best) { T.funds -= unitCost(team, best); const u = spawn(team, {role:best, x:p.x, y:p.y, hp:100}); if (u) { u.moved = u.done = true; out.push(u); } }
+    if (best) { T.funds -= unitCost(team, best); const u = spawn(team, {role:best, x:p.x, y:p.y, hp:100}); if (u) { u.moved = u.done = true; u.bought = true; out.push(u); } }
   }
   return out;
 }
@@ -218,7 +259,7 @@ function planValue(p) {
 }
 function aiNext(team, cache) {
   const order = u => (u.d.indirect ? 0 : u.cargo.length ? 3 : u.d.foot ? 2 : 1);
-  const fo = G.units.filter(o => o.team !== team), near = u => fo.length ? Math.min(...fo.map(o => Math.hypot(o.x - u.x, o.y - u.y))) : 0;
+  const fo = aiFoes(team), near = u => fo.length ? Math.min(...fo.map(o => Math.hypot(o.x - u.x, o.y - u.y))) : 0;
   for (const u of G.units) if (u.team === team) u.tb = Math.random();
   const ready = G.units.filter(u => u.team === team && !u.done).sort((a, b) => order(a) - order(b) || b.d.cost - a.d.cost || near(a) - near(b) || a.tb - b.tb);
   let first = null, best = null, bv = 0;

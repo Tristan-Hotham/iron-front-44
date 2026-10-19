@@ -130,9 +130,9 @@ const HISTORY = {
     lose:'British armour gets around Panzer Lehr\'s flank and into the German rear west of Caen.',
     real:'Wittmann\'s single Tiger destroyed much of A Squadron of the 4th County of London Yeomanry and the Rifle Brigade\'s vehicles in minutes. Wittmann was made a propaganda hero; he was killed on 8 August 1944 near Saint-Aignan-de-Cramesnil, probably by Fireflies.'},
   wacht:{forces:['Three German armies: about 410,000 men, 1,400 tanks and assault guns', 'About 83,000 Americans in a thin line along the "Ghost Front"'],
-    win:'St. Vith falls early, and the panzers have a clear road to the Meuse crossings.',
+    win:'St Vith falls early, and the panzers have a clear road to the Meuse crossings.',
     lose:'The Americans hold the road junction, and the German timetable collapses.',
-    real:'The 7th Armored Division held St. Vith until 21 December, delaying the Sixth and Fifth Panzer Armies by four vital days. The Battle of the Bulge became the largest and bloodiest American battle of the war, with about 19,000 Americans killed. Germany lost its last armoured reserves in the West.'},
+    real:'The 7th Armored Division held St Vith until 21 December, delaying the Sixth and Fifth Panzer Armies by four vital days. The Battle of the Bulge became the largest and bloodiest American battle of the war, with about 19,000 Americans killed. Germany lost its last armoured reserves in the West.'},
 };
 
 const GLOSSARY = [

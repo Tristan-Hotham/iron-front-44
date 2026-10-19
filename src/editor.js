@@ -19,10 +19,13 @@ function edGame() {
   newGame({map:edRows(m), theme:m.theme, teams:{1:{nat:m.p1.nat, co:m.p1.co}, 2:{nat:m.p2.nat, co:m.p2.co}}, units:{1:'', 2:''}});
   buildTerrain();
 }
-function edSnapshot() { ED.undo.push(JSON.stringify({rows:ED.map.rows, units:ED.map.units})); if (ED.undo.length > 60) ED.undo.shift(); ED.redo = []; ED.dirty = true; }
-function edRestore(s) { const o = JSON.parse(s); ED.map.rows = o.rows; ED.map.units = o.units; edGame(); edRender(); }
-function edUndo() { if (!ED.undo.length) return; ED.redo.push(JSON.stringify({rows:ED.map.rows, units:ED.map.units})); edRestore(ED.undo.pop()); }
-function edRedo() { if (!ED.redo.length) return; ED.undo.push(JSON.stringify({rows:ED.map.rows, units:ED.map.units})); edRestore(ED.redo.pop()); }
+/* an undo step keeps the size and theme too, so undoing a resize cannot leave rows of one size in a map of another */
+const edState = () => JSON.stringify({rows:ED.map.rows, units:ED.map.units, W:ED.map.W, H:ED.map.H, theme:ED.map.theme});
+function edSnapshot() { ED.undo.push(edState()); if (ED.undo.length > 60) ED.undo.shift(); ED.redo = []; ED.dirty = true; }
+function edRestore(s) { const o = JSON.parse(s), m = ED.map, resized = o.W && (o.W !== m.W || o.H !== m.H);
+  m.rows = o.rows; m.units = o.units; if (o.W) { m.W = o.W; m.H = o.H; } if (o.theme) m.theme = o.theme; edGame(); if (resized) edFit(); edRender(); }
+function edUndo() { if (!ED.undo.length) return; ED.redo.push(edState()); edRestore(ED.undo.pop()); }
+function edRedo() { if (!ED.redo.length) return; ED.undo.push(edState()); edRestore(ED.redo.pop()); }
 
 /* ---------- editing ---------- */
 const MIRROR_CH = {C:'k', k:'C', F:'g', g:'F', A:'e', e:'A', P:'o', o:'P', Q:'q', q:'Q'};
@@ -88,7 +91,7 @@ function edFromMission(ms) {
   const units = G.units.filter(u => !u.d.fixed || true).map(u => ({team:u.team, role:u.role, x:u.x, y:u.y}));
   ED.map = Object.assign(edBlank(), {name:ms.name + ' (remix)', W:G.W, H:G.H, theme:ms.theme, rows:missionMap(ms).map(r => r.split('')), units,
     p1:{nat:ms.p1.nat, co:ms.p1.co}, p2:{nat:ms.p2.nat, co:ms.p2.co}, obj:ms.objective.win === 'survive' ? 'survive' : ms.objective.win === 'hq' ? 'hq' : 'rout', days:ms.objective.days || 10});
-  edGame(); edFit(); edPalette();
+  ED.dirty = false; ED.loaded = null; edGame(); edFit(); edPalette();
 }
 /* ---------- drawing ---------- */
 const edCv = () => edEl('edcv');
@@ -177,15 +180,40 @@ function edPalette() {
     on('edc1', 'change', e => { m.p1.co = e.target.value; }); on('edc2', 'change', e => { m.p2.co = e.target.value; });
     on('edobj', 'change', e => { m.obj = e.target.value; }); on('edlimit', 'change', e => { m.limit = clamp(+e.target.value || 0, 0, 60); }); on('edwx', 'change', e => { m.weather = e.target.value; }); on('edhour', 'change', e => { m.hour = +e.target.value; }); on('edfunds', 'change', e => { m.funds = +e.target.value; }); on('edfog', 'change', e => { m.fog = e.target.checked; }); on('eddays', 'change', e => { m.days = clamp(+e.target.value || 10, 3, 40); });
     on('edmir', 'change', e => { ED.mirror = e.target.checked; });
-    on('edfrom', 'change', e => { const ms = MISSIONS[e.target.value]; if (!ms) return; edSnapshot(); edFromMission(ms); });
+    on('edfrom', 'change', e => { const ms = MISSIONS[e.target.value]; if (!ms) return; if (ED.dirty && !confirm('Replace the map you are building with this battle? Unsaved changes will be lost (Undo can bring them back).')) { e.target.value = ''; return; } edSnapshot(); edFromMission(ms); });
     on('edgen', 'click', () => edGenerate(m.theme in THEMES ? m.theme : 'normandy')); on('edmall', 'click', edMirrorAll); on('edclear', 'click', () => { edSnapshot(); m.units = []; });
   }
 }
 
 /* ---------- saving, sharing and checking ---------- */
 function edSaved() { try { return JSON.parse(localStorage.getItem(ED_KEY) || '{}'); } catch (e) { return {}; } }
-function edSave() { const all = edSaved(), m = ED.map; all[m.name] = Object.assign({}, m, {rows:edRows(m), saved:Date.now()}); try { localStorage.setItem(ED_KEY, JSON.stringify(all)); ED.dirty = false; const p = loadProg(); stat(p).maps++; award(p, 'mapper'); saveProg(p); edToast(`Saved "${m.name}"`); } catch (e) { edToast('Could not save: browser storage is full or blocked'); } }
-function edLoad(name) { const s = edSaved()[name]; if (!s) return; try { ED.map = edSanitize({n:s.name, W:s.W, H:s.H, t:s.theme, r:s.rows, u:(s.units || []).map(u => [u.team, u.role, u.x, u.y, u.day || 1]), p1:s.p1, p2:s.p2, o:s.obj, d:s.days, l:s.limit, wx:s.weather, hr:s.hour, f:s.funds, fog:s.fog}); } catch (e) { edToast('That saved map is damaged: ' + e.message); return; } ED.undo = []; ED.redo = []; edGame(); edFit(); edPalette(); }
+function edSave() { const all = edSaved(), m = ED.map;
+  if (all[m.name] && ED.loaded !== m.name && !confirm(`A saved map called "${m.name}" already exists. Replace it?`)) return;   // a remix or an import named like an old map must not wipe it silently
+  all[m.name] = Object.assign({}, m, {rows:edRows(m), saved:Date.now()}); try { localStorage.setItem(ED_KEY, JSON.stringify(all)); ED.dirty = false; const p = loadProg(); stat(p).maps++; award(p, 'mapper'); saveProg(p); ED.loaded = m.name; edFillLoad(); edToast(`Saved "${m.name}"`); } catch (e) { edToast('Could not save: browser storage is full or blocked'); } }
+function edLoad(name) { const s = edSaved()[name]; if (!s) return; if (ED.dirty && !confirm('Discard the unsaved changes to this map?')) return; try { ED.map = edSanitize({n:s.name, W:s.W, H:s.H, t:s.theme, r:s.rows, u:(s.units || []).map(u => [u.team, u.role, u.x, u.y, u.day || 1]), p1:s.p1, p2:s.p2, o:s.obj, d:s.days, l:s.limit, wx:s.weather, hr:s.hour, f:s.funds, fog:s.fog}); } catch (e) { edToast('That saved map is damaged: ' + e.message); return; } ED.undo = []; ED.redo = []; ED.dirty = false; ED.loaded = name; edGame(); edFit(); edPalette(); }
+/* the saved-maps list, and renaming or deleting a saved map */
+function edFillLoad() { const sel = edEl('edload'); if (!sel) return; sel.innerHTML = '<option value="">Load a saved map…</option>' + Object.keys(edSaved()).map(n => `<option>${n.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</option>`).join(''); }
+function edWriteSaved(all) { try { localStorage.setItem(ED_KEY, JSON.stringify(all)); return true; } catch (e) { edToast('Could not save: browser storage is full or blocked'); return false; } }
+function edManage() {
+  const all = edSaved(), names = Object.keys(all); if (!names.length) return edToast('No saved maps yet.');
+  const box = $('#codebox'), ta = box.querySelector('#codetext'); box.hidden = false; box.querySelector('h3').textContent = 'Saved maps';
+  box.querySelector('p').textContent = 'Rename or delete the maps saved in this browser.';
+  let list = box.querySelector('.edlist'); if (!list) { list = document.createElement('div'); list.className = 'edlist'; ta.after(list); }
+  const closeBox = () => { box.hidden = true; ta.hidden = false; list.hidden = true; };
+  ta.hidden = true; list.hidden = false; list.innerHTML = '';
+  for (const n of names) {
+    const row = document.createElement('div'), lab = document.createElement('span'), ren = document.createElement('button'), rm = document.createElement('button');
+    row.className = 'edrow'; lab.textContent = n + (all[n].saved ? ' · ' + new Date(all[n].saved).toLocaleDateString() : '');
+    ren.textContent = 'Rename'; ren.onclick = () => { const to = (prompt('New name for this map:', n) || '').replace(/[<>"'&`]/g, '').slice(0, 40).trim(); if (!to || to === n) return;
+      const a = edSaved(); if (a[to] && !confirm(`A map called "${to}" already exists. Replace it?`)) return; a[to] = Object.assign(a[n], {name:to}); delete a[n];
+      if (edWriteSaved(a)) { if (ED.loaded === n) { ED.loaded = to; ED.map.name = to; } edFillLoad(); edManage(); } };
+    rm.textContent = 'Delete'; rm.onclick = () => { if (!confirm(`Delete "${n}" for good?`)) return; const a = edSaved(); delete a[n];
+      if (edWriteSaved(a)) { if (ED.loaded === n) ED.loaded = null; edFillLoad(); if (Object.keys(a).length) edManage(); else closeBox(); } };
+    row.append(lab, ren, rm); list.append(row);
+  }
+  box.querySelector('small').textContent = ''; box.querySelector('.cancel').textContent = 'Close'; box.querySelector('.ok').textContent = 'Done';
+  box.querySelector('.cancel').onclick = box.querySelector('.ok').onclick = closeBox;
+}
 function edToast(t) { const el = edEl('edtoast'); el.textContent = t; el.hidden = false; clearTimeout(edToast.t); edToast.t = setTimeout(() => el.hidden = true, 2600); }
 async function edExport() {
   const m = ED.map, json = JSON.stringify({n:m.name, W:m.W, H:m.H, t:m.theme, r:edRows(m), u:m.units.map(u => [u.team, u.role, u.x, u.y, u.day || 1]), p1:m.p1, p2:m.p2, o:m.obj, d:m.days, l:m.limit, wx:m.weather, hr:m.hour, f:m.funds, fog:m.fog});
@@ -210,7 +238,7 @@ function edSanitize(o) {
     hour:num(o.hr, 0, 23, 8), funds:num(o.f, 0, 200000, 5000), fog:!!o.fog});
 }
 async function edImport(code) {
-  code = code.trim(); let json;
+  code = code.replace(/\s+/g, ''); let json;   // chat apps and email wrap long codes: strip the line breaks and spaces they add
   if (code.startsWith('BZM1')) { const bin = Uint8Array.from(atob(code.slice(4)), c => c.charCodeAt(0)); json = await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text(); }
   else if (code.startsWith('BZM0')) json = decodeURIComponent(escape(atob(code.slice(4))));
   else throw new Error('not a map code');
@@ -252,7 +280,7 @@ async function edBalance() {
   ED.map = JSON.parse(saveMap); edGame();
   const w1 = res.filter(r => r.w === 1).length, w2 = res.filter(r => r.w === 2).length, none = res.length - w1 - w2, avg = Math.round(res.reduce((s, r) => s + r.day, 0) / res.length);
   const verdict = none > res.length / 2 ? 'Games tend to stall: add a closer objective or more capturable towns.' : Math.abs(w1 - w2) <= 2 ? 'Well balanced.' : w1 > w2 ? 'Side 1 is favoured.' : 'Side 2 is favoured.';
-  const box = $('#codebox'); box.hidden = false; box.querySelector('h3').textContent = 'Balance check';
+  const box = $('#codebox'); box.hidden = false; box.querySelector('#codetext').hidden = false; const ls = box.querySelector('.edlist'); if (ls) ls.hidden = true; box.querySelector('h3').textContent = 'Balance check';
   box.querySelector('p').textContent = `${res.length} computer games, every pairing of aggressive, methodical and cautious generals. Side 1 won ${w1}, side 2 won ${w2}, ${none} unfinished. Average length ${avg} turns. ${verdict}`;
   const ta = box.querySelector('#codetext'); ta.readOnly = true;
   ta.value = res.map(r => `Side 1 ${r.a.padEnd(11)} v side 2 ${r.b.padEnd(11)} → ${r.w ? 'side ' + r.w + ' wins' : 'no result'} (${r.why}) on turn ${r.day}`).join('\n');
@@ -265,14 +293,23 @@ function openEditor(map) {
   show('editor'); musicMood('campaign');
   const c = edCv(), box = c.parentElement.getBoundingClientRect(); c.width = Math.max(320, box.width * dpr); c.height = Math.max(240, box.height * dpr);
   edGame(); edFit(); edPalette(); edLoop();
-  const sel = edEl('edload'); sel.innerHTML = '<option value="">Load a saved map…</option>' + Object.keys(edSaved()).map(n => `<option>${n.replace(/</g, '&lt;')}</option>`).join('');
+  edFillLoad();
 }
 function edLoop() { if (document.body.dataset.screen !== 'editor') return; edRender(); requestAnimationFrame(edLoop); }
 function edLeave(to = 'title') { G = null; terrainCanvas = null; show(to); if (to === 'title') musicMood('title'); }
 function edBoot() {
   const c = edCv();
   c.addEventListener('contextmenu', e => e.preventDefault());
+  // touch: two fingers pinch to zoom and drag to pan (one finger paints)
+  const pts = new Map(); let pin = null;
+  const pinchState = () => { const [a, b] = [...pts.values()], r = c.getBoundingClientRect(), k = c.width / r.width; return {d:Math.hypot(a.x - b.x, a.y - b.y) || 1, mx:((a.x + b.x) / 2 - r.left) * k, my:((a.y + b.y) / 2 - r.top) * k}; };
+  c.addEventListener('pointerdown', e => { pts.set(e.pointerId, {x:e.clientX, y:e.clientY}); if (pts.size === 2) { if (ED.drag && ED.drag.paint && ED.undo.length) edUndo(); ED.drag = null; ED.rect = null; pin = Object.assign(pinchState(), {z:ED.zoom, ox:ED.ox, oy:ED.oy}); } }, true);
+  c.addEventListener('pointermove', e => { if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, {x:e.clientX, y:e.clientY}); if (!pin || pts.size !== 2) return; e.stopImmediatePropagation();
+    const now = pinchState(), z = clamp(pin.z * now.d / pin.d, .12, 2); ED.zoom = z; ED.ox = now.mx - (pin.mx - pin.ox) * z / pin.z; ED.oy = now.my - (pin.my - pin.oy) * z / pin.z; }, true);
+  const lift = e => { pts.delete(e.pointerId); if (pts.size < 2) { if (pin) { ED.drag = null; } pin = null; } };
+  c.addEventListener('pointerup', lift, true); c.addEventListener('pointercancel', lift, true);
   c.addEventListener('pointerdown', e => {
+    if (pin) return;
     c.setPointerCapture(e.pointerId); const t = edToTile(e.clientX, e.clientY);
     if (e.button === 1 || e.button === 2 && e.shiftKey || e.altKey) { ED.drag = {pan:true, x:e.clientX, y:e.clientY, ox:ED.ox, oy:ED.oy}; return; }
     if (e.button === 2) { const ch = ED.map.rows[t[1]] && ED.map.rows[t[1]][t[0]]; if (ch) { ED.brush = ch; ED.tool = 'paint'; ED.panel = 'paint'; edPalette(); } return; }   // right-click picks up the terrain
@@ -297,22 +334,22 @@ function edBoot() {
     else if (e.key === 'f') edFit(); else if (e.key === 'm') { ED.mirror = !ED.mirror; edPalette(); } });
   addEventListener('resize', () => { if (document.body.dataset.screen === 'editor') { const box = c.parentElement.getBoundingClientRect(); c.width = box.width * dpr; c.height = box.height * dpr; edFit(); } });
   const on = (id, f) => edEl(id).addEventListener('click', () => { sfx('click'); f(); });
-  on('ednew', () => { if (ED.dirty && !confirm('Discard the changes to this map?')) return; ED.map = edBlank(ED.map.W, ED.map.H, ED.map.theme); ED.undo = []; edGame(); edPalette(); });
+  on('ednew', () => { if (ED.dirty && !confirm('Discard the changes to this map?')) return; ED.map = edBlank(ED.map.W, ED.map.H, ED.map.theme); ED.undo = []; ED.dirty = false; ED.loaded = null; edGame(); edPalette(); });
   on('edundo', edUndo); on('edredo', edRedo); on('edsave', edSave); on('edfit', edFit);
   on('edexport', async () => { const code = await edExport(); showMapCode(code); });
-  on('edimport', () => showMapCode('', true));
+  on('edimport', () => showMapCode('', true)); on('edmanage', edManage);
   on('edquick', () => { edSnapshot(); const rows = edRows(ED.map); for (const t of [1, 2]) { if (!rows.some(r => r.includes(t === 1 ? 'Q' : 'q'))) continue; ED.map.units = ED.map.units.filter(u => u.team !== t);
     G.units = []; for (const s of placeSpecs(t, parseUnits(skirmishUnits(rows, t)), 99 + t)) ED.map.units.push({team:t, role:s.role, x:s.x, y:s.y}); } edPalette(); });
-  on('edplay', () => { const p = edProblems().filter(x => !x.includes('Side 1 has no units')); if (p.length) return edToast(p[0]); const cfg = edCfg(false, true); UI.fromEditor = true; G = null; startGame(cfg); });
-  on('edwatch', () => { const p = edProblems().filter(x => !x.includes('no units')); if (p.length) return edToast(p[0]); const cfg = edCfg(true, true); UI.fromEditor = true; G = null; startGame(cfg); });
+  on('edplay', () => { const p = edProblems().filter(x => !x.includes('Side 1 has no units')); if (p.length) return edToast(p[0]); const cfg = edCfg(false, true); cfg.edtest = true; UI.fromEditor = true; G = null; startGame(cfg); });
+  on('edwatch', () => { const p = edProblems().filter(x => !x.includes('no units')); if (p.length) return edToast(p[0]); const cfg = edCfg(true, true); cfg.edtest = true; cfg.watch = true; UI.fromEditor = true; G = null; startGame(cfg); });
   on('edbal', edBalance);
-  on('edhot', () => { const p = edProblems().filter(x => !x.includes('no units')); if (p.length) return edToast(p[0]); const cfg = edCfg(false, false); UI.fromEditor = true; G = null; startGame(cfg); });
+  on('edhot', () => { const p = edProblems().filter(x => !x.includes('no units')); if (p.length) return edToast(p[0]); const cfg = edCfg(false, false); cfg.edtest = true; UI.fromEditor = true; G = null; startGame(cfg); });
   on('edwaves', () => { const rows = edRows(ED.map); UI.fromEditor = true; openLastStand({rows, theme:ED.map.theme, name:ED.map.name}); });
   on('edback', () => { if (ED.dirty && !confirm('Leave without saving?')) return; edLeave(); });
   edEl('edload').addEventListener('change', e => { if (e.target.value) edLoad(e.target.value); e.target.value = ''; });
 }
 function showMapCode(code, importing) {
-  const box = $('#codebox'); box.hidden = false;
+  const box = $('#codebox'); box.hidden = false; box.querySelector('#codetext').hidden = false; const ls = box.querySelector('.edlist'); if (ls) ls.hidden = true;
   box.querySelector('h3').textContent = importing ? 'Import a map' : 'Map code';
   box.querySelector('p').textContent = importing ? 'Paste a map code someone has shared with you.' : 'Copy this code and send it to a friend. They can paste it into Import in their Map Builder.';
   const ta = box.querySelector('#codetext'); ta.value = code; ta.readOnly = !importing; setTimeout(() => { ta.focus(); ta.select(); }, 50);
@@ -321,7 +358,8 @@ function showMapCode(code, importing) {
   box.querySelector('.cancel').onclick = () => { box.hidden = true; };
   box.querySelector('.ok').onclick = async () => {
     if (!importing) { try { await navigator.clipboard.writeText(code); box.querySelector('small').textContent = 'Copied.'; } catch (e) { ta.select(); } return; }
-    try { await edImport(ta.value); box.hidden = true; edToast('Map imported'); } catch (e) { box.querySelector('small').textContent = 'That code did not work: ' + e.message; }
+    if (ED.dirty && !confirm('Discard the unsaved changes to this map?')) return;
+    try { await edImport(ta.value); ED.dirty = false; ED.loaded = null; box.hidden = true; edToast('Map imported'); } catch (e) { box.querySelector('small').textContent = 'That code did not work: ' + e.message; }
   };
 }
 

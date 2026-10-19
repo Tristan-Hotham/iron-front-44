@@ -89,17 +89,21 @@ function fadeTo(el, vol, ms, then) {                  // an eased fade (equal-po
 }
 const musicVol = () => .45 * SET.vol * (SET.musicVol ?? 1) * (MUSIC.duck || 1);
 /* the music steps back while a general speaks or a battle is fought, so the voices and the guns come through */
-function musicDuck(on) { MUSIC.duck = on ? .5 : 1; const el = MUSIC.els[MUSIC.cur]; if (el && !el.paused && SET.music) fadeTo(el, musicVol(), on ? 600 : 1600); }
+function musicDuck(on) { MUSIC.ducks = Math.max(0, (MUSIC.ducks || 0) + (on ? 1 : -1)); MUSIC.duck = MUSIC.ducks ? .5 : 1;   // counted: a voice line ending mid-battle doesn't unduck the battle
+  const el = MUSIC.els[MUSIC.cur]; if (el && !el.paused && SET.music) fadeTo(el, musicVol(), on ? 600 : 1600); }
 /* switch to a mood (army, title, night...), resuming that mood's piece where it left off */
-const MOOD_ALIAS = {ger40:'ger', uk40:'uk', su41:'su', usp:'us', fr40:'fr', be:'fr'};   // armies without their own recordings borrow a fitting mood
-function musicMood(mood, force) {
+const MOOD_ALIAS = {ger40:'ger', uk40:'uk', su41:'su', usp:'us', fr40:'fr', be:'fr', dak:'ger', uk42:'uk', ffl:'fr', itgv:'it', itcb:'it', itrm:'it', gr:'campaign', gres:'campaign', zed:'night'};   // armies without their own recordings borrow a fitting mood
+function musicMood(mood, force, nat) {
   mood = MOOD_ALIAS[mood] || mood;
+  const base = mood; if (nat) { nat = MOOD_ALIAS[nat] || nat; mood += ':' + nat; }         // victory music: the winner's own marches, not a random army's
   if (MUSIC.mood === mood && !force) return;
   const old = MUSIC.els[MUSIC.cur];
   if (old && MUSIC.mood && MUSIC.playing) { MUSIC.pos[MUSIC.mood] = {file:MUSIC.playing.file, t:old.currentTime}; }
   MUSIC.mood = mood;
-  const list = MUSIC.tracks.filter(t => t.mood.includes(mood) && !musicOff(t));
-  MUSIC.list = list.length ? list : MUSIC.tracks.filter(t => !musicOff(t));
+  let list = MUSIC.tracks.filter(t => t.mood.includes(base) && !musicOff(t));
+  if (nat && list.some(t => t.mood.includes(nat))) list = list.filter(t => t.mood.includes(nat));
+  const camp = MUSIC.tracks.filter(t => t.mood.includes('campaign') && !musicOff(t));   // an unknown mood falls back to the campaign pieces, never to any army's anthem
+  MUSIC.list = list.length ? list : camp.length ? camp : MUSIC.tracks.filter(t => !musicOff(t));
   if (MUSIC.idx[mood] == null) MUSIC.idx[mood] = Math.random() * MUSIC.list.length | 0;
   const saved = MUSIC.pos[mood];
   if (saved && saved.file && MUSIC.list.some(t => t.file === saved.file)) playTrack(MUSIC.list.find(t => t.file === saved.file), saved.t);

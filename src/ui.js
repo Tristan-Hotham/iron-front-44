@@ -22,11 +22,19 @@ function resize() {
   cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
   if (G) clampCam();
 }
-function clampCam() {
-  const vw = innerWidth / cam.z, vh = innerHeight / cam.z, mw = G.W * ART, mh = G.H * ART, top = 96 / cam.z, bot = 120 / cam.z, side = 24 / cam.z;
-  cam.x = mw + 2 * side < vw ? (mw - vw) / 2 : clamp(cam.x, -side, mw - vw + side);
-  cam.y = mh + top + bot < vh ? (mh - vh) / 2 - (bot - top) / 2 : clamp(cam.y, -top, mh - vh + bot);
+/* the camera may run well past every edge: by the height of the HUD actually on screen (phone or desktop, shown or hidden)
+   plus a quarter of the screen, so a tile under the top bar can always be dragged into the clear. A small map can be moved too. */
+function hudEdges() {
+  const bare = document.body.classList.contains('hudless'), h = id => { const el = document.getElementById(id); return !bare && el && !el.closest('[hidden]') ? el.getBoundingClientRect().height : 0; };
+  return {top:h('top'), bot:h('bottom')};
 }
+function clampCam() {
+  const vw = innerWidth / cam.z, vh = innerHeight / cam.z, mw = G.W * ART, mh = G.H * ART, e = hudEdges();
+  const top = (e.top + innerHeight * .25) / cam.z, bot = (e.bot + innerHeight * .25) / cam.z, side = innerWidth * .3 / cam.z;
+  const span = (a, b) => [Math.min(a, b), Math.max(a, b)], [x0, x1] = span(-side, mw - vw + side), [y0, y1] = span(-top, mh - vh + bot);
+  cam.x = clamp(cam.x, x0, x1); cam.y = clamp(cam.y, y0, y1);
+}
+function minZoom() { return Math.min(.3, .9 * Math.min(innerWidth / (G.W * ART), innerHeight / (G.H * ART))); }   // far enough out to see the whole of any map
 function fitCamera() {
   const fit = Math.min(innerWidth / (G.W * ART), (innerHeight - 220) / (G.H * ART));
   cam.z = clamp(Math.max(fit, .78), .35, 1.4);
@@ -35,7 +43,7 @@ function fitCamera() {
   centerOn(c.x, c.y);
 }
 function centerOn(x, y) { cam.x = x * ART + ART / 2 - innerWidth / cam.z / 2; cam.y = y * ART + ART / 2 - innerHeight / cam.z / 2; clampCam(); }
-function zoomAt(sx, sy, z) { z = clamp(z, .3, 1.8); const wx = cam.x + sx / cam.z, wy = cam.y + sy / cam.z; cam.z = z; cam.x = wx - sx / z; cam.y = wy - sy / z; clampCam(); }
+function zoomAt(sx, sy, z) { z = clamp(z, minZoom(), 2.2); const wx = cam.x + sx / cam.z, wy = cam.y + sy / cam.z; cam.z = z; cam.x = wx - sx / z; cam.y = wy - sy / z; clampCam(); }
 function focus(x, y) {
   if (FAST) return;
   const sx = (x * ART + ART / 2 - cam.x) * cam.z, sy = (y * ART + ART / 2 - cam.y) * cam.z, m = 130;
@@ -125,9 +133,17 @@ function drawPath() {
   ctx.strokeStyle = '#b03020'; ctx.lineWidth = 5; ctx.stroke();
   const [ex, ey] = UI.path[UI.path.length - 1]; ctx.fillStyle = '#b03020'; ctx.beginPath(); ctx.arc(ex * ART + h, ey * ART + h, 8, 0, 7); ctx.fill();
 }
+/* each side's marker colour; when both armies share or nearly share one (a mirror match, British against Soviets), the second side switches to a contrasting colour */
+function teamCol(team) {
+  const c = t => NATION[G.teams[t].nat].col.team; if (team !== 2) return c(team);
+  const key = c(1) + c(2); if (G._tc2 && G._tc2.k === key) return G._tc2.v;
+  const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) || 0), d = (a, b) => { const x = rgb(a), y = rgb(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]); };
+  let v = c(2); if (d(c(1), v) < 90) v = ['#f2f2ea', '#e8c040', '#3a9ad8', '#1a1a1a', '#9a4ac8'].sort((a, b) => d(c(1), b) - d(c(1), a))[0];
+  G._tc2 = {k:key, v}; return v;
+}
 function drawUnit(u, t) {
   const rx = u.rx ?? u.x, ry = u.ry ?? u.y, X = rx * ART, Y = ry * ART;
-  const nat = G.teams[u.team].nat, faceLeft = u.team === 2;
+  const nat = G.teams[u.team].nat, faceLeft = u.face ? u.face < 0 : u.team === 2;   // a unit turns to where it last moved or fired
   const anim = SET.anim ? (frame + u.id) % 8 : 0, grey = u.done && u.team === G.turn && !u.d.fixed;
   const f = u.moving || u.d.air || u.d.sea ? anim : (u.d.foot ? (Math.floor(frame / 3) + u.id) % 2 * 2 : 0);
   const img = getSprite(nat, u.role, f, grey, spriteVar(u, G.theme));
@@ -149,7 +165,7 @@ function drawUnit(u, t) {
   if (wet) { ctx.strokeStyle = 'rgba(230,240,245,.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(X + ART / 2, Y + ART * .8, 26, 4, 0, 0, 7); ctx.stroke(); }
   if (u.dug && !u.moving) { ctx.fillStyle = '#9a8a62'; for (let i = 0; i < 7; i++) { const a = Math.PI * (.1 + i * .133); ctx.beginPath(); ctx.ellipse(X + ART / 2 + Math.cos(a) * 26, Y + ART - 10 + Math.sin(a) * 7, 5, 3, 0, 0, 7); ctx.fill(); } }
   if (u.flash) { ctx.globalAlpha = .6; ctx.fillStyle = '#fff'; ctx.fillRect(X + 8, Y + 12, ART - 16, ART - 20); ctx.globalAlpha = 1; }
-  const tc = NATION[nat].col.team;
+  const tc = teamCol(u.team);
   ctx.fillStyle = tc; ctx.fillRect(X + 2, Y + ART - 9, 8, 8); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(X + 2.5, Y + ART - 8.5, 7, 7);
   const hp = hpBars(u);
   ctx.font = 'bold 18px "Courier Prime",monospace'; ctx.textAlign = 'center';
@@ -171,8 +187,8 @@ function drawMinimap() {
   const C = PAL[G.theme] || PAL.normandy;
   const col = {plain:C.grass, road:C.road, forest:C.tree, bocage:C.hedge, hill:C.hill, river:C.water, bridge:'#7a6a52', sea:C.sea, beach:C.sand, bunker:'#8e8c84', ruins:'#7e7464', city:C.wall, hq:'#f0d060', fact:'#a08860', air:'#9a9a8e', port:'#7a766c', obst:'#5a5246', shingle:'#9a948a', wire:'#6a6a5a', mines:'#8a5a3a', cliff:'#7a7262', trench:'#6a5a3a', marsh:'#5a7a6a', field:C.wheat, block:'#8a8478'};
   for (let y = 0; y < G.H; y++) for (let x = 0; x < G.W; x++) { mmg.fillStyle = col[terr(x, y)] || TER[terr(x, y)].mm || '#555'; mmg.fillRect(x * s, y * s, s, s); }
-  for (const p of Object.values(G.props)) if (p.owner) { mmg.fillStyle = NATION[G.teams[p.owner].nat].col.team; mmg.fillRect(p.x * s, p.y * s, s, s); }
-  for (const u of G.units) { mmg.fillStyle = u.team === 1 ? '#fff' : '#111'; mmg.fillRect(u.x * s + 1, u.y * s + 1, Math.max(1, s - 2), Math.max(1, s - 2)); mmg.fillStyle = NATION[G.teams[u.team].nat].col.team; mmg.fillRect(u.x * s + s / 2 - .5, u.y * s + s / 2 - .5, 1, 1); }
+  for (const p of Object.values(G.props)) if (p.owner) { mmg.fillStyle = teamCol(p.owner); mmg.fillRect(p.x * s, p.y * s, s, s); }
+  for (const u of G.units) { mmg.fillStyle = u.team === 1 ? '#fff' : '#111'; mmg.fillRect(u.x * s + 1, u.y * s + 1, Math.max(1, s - 2), Math.max(1, s - 2)); mmg.fillStyle = teamCol(u.team); mmg.fillRect(u.x * s + s / 2 - .5, u.y * s + s / 2 - .5, 1, 1); }
   mmg.strokeStyle = '#ffde6a'; mmg.lineWidth = 1; mmg.strokeRect(cam.x / ART * s, cam.y / ART * s, innerWidth / cam.z / ART * s, innerHeight / cam.z / ART * s);
 }
 mm.addEventListener('pointerdown', e => { if (!G) return; const r = mm.getBoundingClientRect(); centerOn((e.clientX - r.left) / r.width * G.W, (e.clientY - r.top) / r.height * G.H); e.stopPropagation(); });
@@ -212,13 +228,15 @@ function portraitCanvas(id, s) {                      // the portrait is painted
   const src = getPortrait(id), px = Math.round(Math.max(96 * s, 192)), c = mkCanvas(px, px), g = c.getContext('2d'); g.imageSmoothingEnabled = px < src.width; g.drawImage(src, 0, 0, px, px);
   c.style.width = c.style.height = 96 * s + 'px'; return c;
 }
-function flagCanvas(nat, w, h) { const c = mkCanvas(w * 2, h * 2); drawFlag(c.getContext('2d'), nat, 0, 0, w * 2, h * 2); c.style.width = w + 'px'; c.style.height = h + 'px'; return c; }
+const FLAG_CACHE = {};
+function flagCanvas(nat, w, h) { const k = nat + w + 'x' + h; let m = FLAG_CACHE[k]; if (!m) { m = FLAG_CACHE[k] = mkCanvas(w * 2, h * 2); drawFlag(m.getContext('2d'), nat, 0, 0, w * 2, h * 2); }   // each flag painted once; the menus get copies
+  const c = mkCanvas(w * 2, h * 2); c.getContext('2d').drawImage(m, 0, 0); c.style.width = w + 'px'; c.style.height = h + 'px'; return c; }
 function spriteCanvas(nat, role, s = 1, flip = false) { const src = getSprite(nat, role, 0), c = mkCanvas(ART * s, ART * s), g = c.getContext('2d'); g.imageSmoothingEnabled = false; if (flip) { g.translate(ART * s, 0); g.scale(-1, 1); } g.drawImage(src, 0, 0, ART * s, ART * s); return c; }
 function infoPanel() {
   const {x, y} = UI.cursor; if (!G || !inside(x, y)) return;
   const t = terr(x, y), T = TER[t], p = propAt(x, y), u = unitAt(x, y);
   $('#tinfo').innerHTML = `<b>${T.n}</b><span class="stars">${'★'.repeat(T.def)}${'☆'.repeat(Math.max(0, 4 - T.def))}</span>` +
-    (p ? `<span>${p.owner ? NATION[G.teams[p.owner].nat].adj : 'Neutral'}${p.cap < 20 ? ` · capture ${p.cap}/20` : ''}</span>` : '') +
+    (p ? `<span>${p.owner ? NATION[G.teams[p.owner].nat].adj : 'Neutral'}${p.cap < 20 ? ` · being captured: ${p.cap} of 20 left` : ''}</span>` : '') +
     `<span class="mvc">${['foot', 'tread', 'tire'].map(m => `${m === 'foot' ? 'Inf' : m === 'tread' ? 'Trk' : 'Whl'} ${T.mv[m] || '–'}`).join(' · ')}</span>` + (T.info ? `<span class="tip">${T.info}</span>` : '');
   const uEl = $('#uinfo');
   if (!u || !seen(u)) { uEl.hidden = true; return; }
@@ -228,6 +246,8 @@ function infoPanel() {
   const d = document.createElement('div');
   d.innerHTML = `<b>${u.d.n}</b><span class="nm2">${u.name}${r ? ` · <em>${RANKS[r].n}</em>` : ''}</span><span>${u.d.w}</span><span>HP ${hpBars(u)}/10${u.dug ? ' · dug in (+1★)' : ''} · Move ${moveOf(u)}${b ? ` · Range ${a === b ? a : a + '–' + b}` : ''}${u.kills ? ` · ${u.kills} kills` : ''}</span>` +
     (u.cargo.length ? `<span>Carrying: ${u.cargo.map(c => c.d.n).join(', ')}</span>` : '') +
+    (usesFuel(u) ? `<span${(u.fuel ?? fuelMax(u)) <= 2 ? ' style="color:#ff9a6a"' : ''}>Fuel: ${u.fuel ?? fuelMax(u)} of ${fuelMax(u)} days aloft${(u.fuel ?? fuelMax(u)) <= 2 ? ': head for an airfield, a town you hold or a carrier' : ''}</span>` : '') +
+    (u.d.sea && u.d.indirect ? `<span>Main guns at range ${a}–${b}; secondaries, depth charges and flak take on a ship alongside${u.role === 'dd' ? '; she can run in on a U-boat and depth-charge it on the move' : ''}</span>` : '') +
     (u.d.sub ? `<span>${u.revealed ? 'Surfaced: gave herself away by firing' : 'Submerged: invisible to the enemy unless found by asdic, aircraft or a ship alongside'}</span>` : '') +
     (u.d.asw ? '<span>Asdic: finds submerged U-boats within 2 squares</span>' : '') + (u.d.carrier ? '<span>Air strikes up to 8 squares, by day only</span>' : '') +
     `<span class="xp"><i style="width:${Math.min(100, (u.xp || 0) / (RANKS[Math.min(3, r + 1)].xp || 500) * 100)}%"></i></span>`;
@@ -248,21 +268,23 @@ function say(coId, text) {
     const v = babble(coId, text, {zed:CO[coId].nat === 'zed'}), ms = Math.max(400, Math.min(v ? v.dur * 1000 : 0, text.length * 45) || text.length * 18), t0 = performance.now();
     let full = false; const tick = setInterval(() => { const n = Math.ceil(text.length * Math.min(1, (performance.now() - t0) / ms)); txt.textContent = text.slice(0, n); if (n >= text.length) { full = true; clearInterval(tick); } }, 30);
     const finish = () => { clearInterval(tick); txt.textContent = text; full = true; if (v) v.stop(); };
-    const close = () => { if (!full) return finish(); finish(); musicDuck(false); d.hidden = true; d.removeEventListener('click', close); removeEventListener('keydown', key); res(); };
+    let shut = false;
+    const close = () => { if (shut) return; if (!full) return finish(); finish(); shut = true; musicDuck(false); d.hidden = true; d.removeEventListener('click', close); removeEventListener('keydown', key); res(); };
     const key = e => { if (['Enter', ' ', 'z', 'Z', 'Escape'].includes(e.key)) close(); };
     d.addEventListener('click', close); addEventListener('keydown', key);
-    if (G && (G.watch || (G.teams[1].ai && G.teams[2].ai))) setTimeout(() => { if (!d.hidden) { finish(); close(); } }, 2600 + text.length * 25);   // spectators are not asked to click
+    if (G && (G.watch || (G.teams[1].ai && G.teams[2].ai))) setTimeout(() => { if (!d.hidden && !shut) { finish(); close(); } }, 2600 + text.length * 25);   // spectators are not asked to click
   });
 }
 
 /* ---------- actions shared by player and AI ---------- */
 async function animateMove(u, path) {
   if (!path || path.length < 2) return;
-  if (FAST) { const [x, y] = path[path.length - 1]; u.x = x; u.y = y; u.dug = false; return; }
+  if (FAST) { const [x, y] = path[path.length - 1]; if (x !== u.x) u.face = Math.sign(x - u.x); u.x = x; u.y = y; u.dug = false; return; }
   moveSound(u); u.moving = true; u.dug = false;
   const spd = SET.aiFast && isAI(u.team) ? 55 : 110;
   for (let i = 1; i < path.length; i++) {
     const [ax, ay] = path[i - 1], [bx, by] = path[i], t0 = performance.now();
+    if (bx !== ax) u.face = Math.sign(bx - ax);       // turn with the road
     await new Promise(r => { const tick = () => { const k = Math.min(1, (performance.now() - t0) / spd); u.rx = ax + (bx - ax) * k; u.ry = ay + (by - ay) * k; if (k < 1) setTimeout(tick, 16); else r(); }; tick(); });
     const [wx, wy] = T2W(bx, by);
     if (u.d.mt === 'tread' || u.d.mt === 'amphib' || u.d.mt === 'tire') fxDust(wx, wy + 16, 2, G.theme === 'winter' ? '230,236,240' : '150,130,95');
@@ -281,6 +303,7 @@ function showPromos(res) {
 }
 async function doAttack(u, t) {
   focus(t.x, t.y);
+  if (t.x !== u.x) { u.face = Math.sign(t.x - u.x); t.face = -u.face; }   // they turn to face each other
   const preA = u.hp, preD = t.hp, ux = u.x, uy = u.y, tx = t.x, ty = t.y;
   if (!FAST && !SET.battle) fxBark(u, 'atk');
   const res = attack(u, t);
@@ -300,7 +323,7 @@ async function doAttack(u, t) {
 }
 async function doCapture(u) {
   const r = capture(u); sfx('capture'); if (Math.random() < .7) fxBark(u, 'cap');
-  fxText(u.x, u.y, r.done ? 'Captured!' : `${propAt(u.x, u.y).cap}/20`, '#f0d060');
+  fxText(u.x, u.y, r.done ? 'Captured!' : `${propAt(u.x, u.y).cap} left to capture`, '#f0d060');
   if (r.done) await sleep(400);
   return r;
 }
@@ -309,7 +332,7 @@ async function doClear(u, x, y) {
   if (!FAST) { fxExplosion(x, y, .8, {crater:false}); terrainCanvas && drawTile(terrainCanvas.getContext('2d'), x, y); fxText(x, y, was === 'mines' ? 'Mines cleared' : 'Lane open', '#9ae07a'); await sleep(500); }
 }
 function doLoad(u, t) { G.units = G.units.filter(o => o !== u); u.x = t.x; u.y = t.y; t.cargo.push(u); u.done = true; }
-function doUnload(t, c, x, y) { t.landed = true; t.cargo = t.cargo.filter(o => o !== c); c.x = x; c.y = y; c.done = true; c.moved = true; G.units.push(c); if (!FAST) fxDust(...T2W(x, y), 3); }
+function doUnload(t, c, x, y) { t.landed = true; t.cargo = t.cargo.filter(o => o !== c); c.x = x; c.y = y; c.done = true; c.moved = true; G.units.push(c); if (!FAST) fxDust(...T2W(x, y), 3); mineCheck(c); }   // landing on a minefield sets it off
 async function usePower(team, lv) {
   const T = G.teams[team], p = lv === 2 ? CO[T.co].scop : CO[T.co].cop;
   const ep = EPOCH; UI.busy = true; hud();
@@ -335,16 +358,18 @@ let EPOCH = 0;
 const stale = ep => ep !== EPOCH || !G;
 async function beginTurn() {
   const team = G.turn, ep = EPOCH;
-  const {rep, pinned} = startTurn(team);
+  const {rep, pinned, ditched} = startTurn(team);
   UI.mode = 'idle'; UI.sel = null; UI.reach = null; UI.hoverEnemy = null;
   if (isLocalHotseat() && !FAST) { UI.busy = true; await handoff(team); UI.busy = false; if (stale(ep)) return; }
   hud(); musicMood(isNight() ? 'night' : G.teams[team].nat);
   await banner(fmtClock(G.day), `Turn ${G.day} · ${NATION[G.teams[team].nat].n} · ${CO[G.teams[team].co].n}`); if (stale(ep)) return;
   for (const u of pinned || []) fxText(u.x, u.y, 'PINNED DOWN', '#ffb060', 1800);
+  for (const u of ditched || []) { fxText(u.x, u.y, 'OUT OF FUEL: LOST', '#ff8a6a', 2200); fxSmoke(...T2W(u.x, u.y), 4, .6, 10, 16); }
+  if (!isAI(team) && G.units.some(u => u.team === team && usesFuel(u))) tip('fuel', 'Aircraft carry fuel for a few days aloft (shown in the unit panel). End a turn on or beside one of your airfields, towns, ports or depots (forward landing grounds), or alongside your carrier, to refuel. An aircraft that runs dry is lost.');
   if ((pinned || []).length && !isAI(team)) tip('pinned', 'Pinned down: a squad cut to half strength in the open on the beach goes to ground and cannot move or fire for a turn. Get them off the sand fast, to the shingle and the cover under the bluffs.');
   for (const u of rep) { fxText(u.x, u.y, '+repair', '#9ae07a'); part({kind:'cross', x:T2W(u.x, u.y)[0], y:T2W(u.x, u.y)[1], life:900}); }
   for (const e of dueEvents()) {
-    const made = runEvent(e);
+    let made = []; try { made = runEvent(e); } catch (err) { console.error('event failed', err); }
     if (made.length) { focus(made[0].x, made[0].y); for (const u of made) fxDust(...T2W(u.x, u.y), 6); }
     if (e.clear && terrainCanvas) { for (const [x, y] of e.clear) { drawTile(terrainCanvas.getContext('2d'), x, y); fxExplosion(x, y, .6, {crater:false}); } }
     if (e.say) { await say(G.teams[e.team].co, e.say); if (stale(ep)) return; }
@@ -366,13 +391,13 @@ async function aiTurn(team) {
   const lv = aiPower(team); if (lv) { await usePower(team, lv); if (stale(ep)) return; UI.busy = true; }
   for (let guard = 0; guard < 300; guard++) {
     if (G.over) break;
-    const plan = aiNext(team, {});
+    let plan = null; try { plan = aiNext(team, {}); } catch (e) { console.error('AI planning failed', e); break; }   // an error ends the enemy's moves for this turn instead of freezing the game
     if (!plan) break;
-    await execPlan(plan);
+    try { await execPlan(plan); } catch (e) { console.error('AI move failed', e); if (plan.u && G.units.includes(plan.u)) { plan.u.done = true; plan.u.moved = true; } }
     if (stale(ep)) return;                             // the player quit, or loaded another game, while this move played out
     if (checkEnd()) break;
   }
-  if (!G.over) { const made = aiBuild(team); if (made.length) { sfx('build'); for (const u of made) fx('smoke', u.x, u.y); } }
+  if (!G.over) try { const made = aiBuild(team); if (made.length) { sfx('build'); for (const u of made) fx('smoke', u.x, u.y); } } catch (e) { console.error('AI build failed', e); }
   UI.busy = false;
   if (G.over) return gameOver();
   if (G.turn !== team) return;                         // never end a turn that is not ours
@@ -407,37 +432,75 @@ async function finishTurn() {
 }
 async function gameOver() {
   if (FAST || UI.overShown) return; UI.overShown = true;
-  const w = G.over.winner, human = !G.teams[1].ai ? 1 : !G.teams[2].ai ? 2 : 1, won = w === human;
+  const w = G.over.winner, bothHuman = !G.teams[1].ai && !G.teams[2].ai, noHuman = G.teams[1].ai && G.teams[2].ai;
+  const human = G.online ? G.online.seat : !G.teams[1].ai ? 1 : !G.teams[2].ai ? 2 : 1, won = w === human;
+  const solo = !G.online && !G.pbem && !bothHuman && !noHuman && !G.watch;   // only a one-player game against the computer earns progress, veterans and medals
   const co = G.teams[w].co; UI.lastWon = won;
   await say(co, CO[co].say.win);
   let promoted = [], score = null;
-  if (G.mission && !G.watch) {
+  if (G.mission && solo) {
     const p = loadProg();
     if (won) { p.done[G.mission.id] = true; promoted = updateCore(p); score = missionScore(G.mission); p.rank = p.rank || {}; const old = p.rank[G.mission.id]; if (!old || RANK_ORDER.indexOf(score.rank) > RANK_ORDER.indexOf(old)) p.rank[G.mission.id] = score.rank; }
     else updateCore(p, true);
     saveProg(p);
   }
   clearAutosave();
-  const why = {hq:'HQ captured', rout:'enemy routed', survive:'position held', time:'time ran out', kill:'objective destroyed', convoy:'the convoy is through', sunk:'too many ships lost', escape:'the quarry escaped', overrun:'the position was overrun'}[G.over.why];
+  const why = {hq:'HQ captured', rout:'enemy routed', survive:'position held', time:'time ran out', kill:'objective destroyed', convoy:'the convoy is through', sunk:'too many ships lost', escape:'the quarry escaped', overrun:'the position was overrun', resign:'the other side resigned'}[G.over.why];
   const r = $('#result');
-  r.querySelector('h2').textContent = won ? 'VICTORY' : 'DEFEAT';
+  r.querySelector('h2').textContent = bothHuman && !G.online ? `${NATION[G.teams[w].nat].n.toUpperCase()} WINS` : won ? 'VICTORY' : 'DEFEAT';   // hotseat: no single "you"
   r.querySelector('.why').textContent = `${NATION[G.teams[w].nat].n} wins: ${why} at ${fmtClock(G.day, G.clock, true)}.`;
-  if (G.waves) { const held = Math.max(0, G.waves.n - 1), rec = waveSaveBest(G.waves.key, held);
+  if (G.waves) { const held = G.waves.zed ? G.waves.best || 0 : Math.max(0, G.waves.n - 1), rec = waveSaveBest(G.waves.key, held);
     r.querySelector('h2').textContent = 'OVERRUN'; r.querySelector('.why').textContent = `You held out against ${held} wave${held === 1 ? '' : 's'}${rec ? ': a new record!' : `. Best on this map: ${waveBest(G.waves.key)}.`}`; }
   r.querySelector('.st').innerHTML = [1, 2].map(t => `<div><b>${CO[G.teams[t].co].n}</b><span>${NATION[G.teams[t].nat].n}</span><span>Destroyed: ${G.stats[t].kills}</span><span>Lost: ${G.stats[t].lost}</span></div>`).join('');
   r.querySelector('.score').innerHTML = score ? `<div class="rank r${score.rank}">${score.rank}</div><dl><dt>Speed</dt><dd>${score.speed}</dd><dt>Power</dt><dd>${score.power}</dd><dt>Technique</dt><dd>${score.tech}</dd></dl>` : '';
-  const medals = G.watch ? [] : recordGame(won);
+  const medals = solo ? recordGame(won) : [];
   r.querySelector('.vets').innerHTML = (medals.length ? '<h4>Decorated</h4>' + medals.map(id => `<span>${medalName(id)}</span>`).join('') : '') + (promoted.length ? '<h4>Into the core force</h4>' + promoted.map(c => `<span>${RANKS[rankOf(c)].n} · ${udef(c.nat, c.role).n} · ${c.name}</span>`).join('') : '');
   r.hidden = false;
-  musicMood(won ? 'victory' : 'defeat');
+  musicMood(won ? 'victory' : 'defeat', false, won ? G.teams[w].nat : null);
 }
 
 /* ---------- campaign progress and the core force ---------- */
-function loadProg() { try { const p = JSON.parse(localStorage.getItem('if44prog2') || '{}'); return Object.assign({done:{}, core:{}, all:false}, p); } catch (e) { return {done:{}, core:{}, all:false}; } }
+function loadProg() {
+  let raw = null; try { raw = localStorage.getItem('if44prog2'); } catch (e) {}
+  try { const p = JSON.parse(raw || '{}'); if (!p || typeof p !== 'object') throw new Error('not an object'); return Object.assign({done:{}, core:{}, all:false}, p); }
+  catch (e) {                                          // a damaged save is set aside, never wiped by the next save
+    try { if (raw && !localStorage.getItem('if44prog2.damaged')) { localStorage.setItem('if44prog2.damaged', raw); localStorage.removeItem('if44prog2'); console.warn('progress save was damaged: kept a copy in if44prog2.damaged'); } } catch (e2) {}
+    return {done:{}, core:{}, all:false};
+  }
+}
+/* progress to and from a file: every if44 key in this browser (campaigns, medals, records, saved maps, settings) */
+function progExport() {
+  const out = {game:'bit-zkrieg', v:1, saved:new Date().toISOString(), keys:{}};
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith('if44') && !k.startsWith('if44auto')) out.keys[k] = localStorage.getItem(k); } } catch (e) {}
+  const name = `bit-zkrieg-progress-${out.saved.slice(0, 10)}.json`, n = Object.keys(out.keys).length, msg = $('#progmsg');
+  if (window.claude && claude.use) {                   // inside the claude.ai viewer a plain download link does nothing: the viewer offers the file instead
+    msg.textContent = 'Preparing the file…';
+    claude.use('downloads').then(dl => { if (!dl) throw {code:'unavailable'}; return dl.save({filename:name, data:JSON.stringify(out)}); })
+      .then(() => { msg.textContent = `Saved ${n} records to a file.`; })
+      .catch(e => { msg.textContent = e && e.code === 'declined' ? 'Not saved.' : 'Saving a file is not available here. Play at tristanhotham.com to save your progress to a file.'; });
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], {type:'application/json'})); a.download = name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  msg.textContent = `Saved ${n} records to a file.`;
+}
+function progImport(file) {
+  const msg = $('#progmsg'), rd = new FileReader();
+  rd.onload = () => { try { const o = JSON.parse(rd.result); if (!o || o.game !== 'bit-zkrieg' || typeof o.keys !== 'object') throw new Error('this is not a Bit-zkrieg progress file');
+      const ks = Object.keys(o.keys).filter(k => k.startsWith('if44') && typeof o.keys[k] === 'string'); if (!ks.length) throw new Error('the file is empty');
+      if (!confirm(`Replace the progress in this browser with the file from ${String(o.saved || '').slice(0, 10) || 'an unknown date'}? (${ks.length} records)`)) return;
+      try { const cur = localStorage.getItem('if44prog2'); if (cur) localStorage.setItem('if44prog2.before-import', cur); } catch (e) {}
+      for (const k of ks) localStorage.setItem(k, o.keys[k]);
+      msg.textContent = 'Progress loaded. Reloading…'; setTimeout(() => location.reload(), 900);
+    } catch (e) { msg.textContent = 'That file could not be loaded: ' + e.message; } };
+  rd.readAsText(file);
+}
 function saveProg(p) { try { localStorage.setItem('if44prog2', JSON.stringify(p)); } catch (e) {} }
 /* survivors with a rank join the core force for their army; the fallen leave it */
+const CORE_KEY = {itgv:'it'};                            // one army under two flags of convenience: the Regio Esercito in Greece and in Africa shares its veterans
+const coreKey = nat => CORE_KEY[nat] || nat;
 function updateCore(p, lostOnly) {
-  const nat = G.teams[1].nat, core = (p.core[nat] = p.core[nat] || []);
+  const nat = G.teams[1].nat, key = coreKey(nat), core = (p.core[key] = p.core[key] || []);
   const alive = new Set(G.units.filter(u => u.team === 1).map(u => u.name));
   for (let i = core.length - 1; i >= 0; i--) if (G.coreNames && G.coreNames.includes(core[i].name) && !alive.has(core[i].name)) core.splice(i, 1);
   if (lostOnly) return [];
@@ -450,7 +513,7 @@ function updateCore(p, lostOnly) {
   return added;
 }
 function deployCore(m) {
-  const p = loadProg(), nat = G.teams[1].nat, core = (p.core[nat] || []).slice(0, m.coreSlots || 4);
+  const p = loadProg(), nat = G.teams[1].nat, core = (p.core[coreKey(nat)] || []).slice(0, m.coreSlots || 4);
   const mine = G.units.filter(u => u.team === 1); if (!mine.length) return;
   const cx = Math.round(mine.reduce((s, u) => s + u.x, 0) / mine.length), cy = Math.round(mine.reduce((s, u) => s + u.y, 0) / mine.length);
   G.coreNames = [];
@@ -481,6 +544,19 @@ function selectTile(x, y) {
     UI.hoverEnemy = null; openGameMenu(); return;
   }
   if (UI.mode === 'move') {
+    const foe = unitAt(x, y);
+    if (foe && foe.team !== UI.sel.team && seen(foe) && canHit(UI.sel, foe) && !(UI.sel.d.air && airGrounded())) {   // clicking an enemy attacks it: into the best firing position, then confirm on the forecast
+      const fr = attackFrom(UI.sel, foe), sel = UI.sel, path = fr ? (fr[0] === sel.x && fr[1] === sel.y ? [[sel.x, sel.y]] : pathTo(UI.reach, fr[0], fr[1])) : null;
+      if (path && !path.some(([a, b], i) => i > 0 && unitAt(a, b) && unitAt(a, b).team !== sel.team)) {
+        UI.mode = 'busy';
+        (async () => { UI.busy = true; await animateMove(sel, path); const alive = path.length < 2 || await afterMove(sel); UI.busy = false;
+          if (!alive) { UI.mode = 'idle'; UI.sel = null; UI.reach = null; hud(); if (checkEnd()) gameOver(); return; }
+          const tg = targetsFrom(sel, sel.x, sel.y, path.length > 1).filter(seen);
+          if (!tg.includes(foe)) { UI.mode = 'menu'; openActions(sel); return; }
+          UI.mode = 'target'; UI.targets = tg.map(t => [t.x, t.y]); UI.cursor = {x:foe.x, y:foe.y}; forecast(); })();
+        return;
+      }
+    }
     const n = UI.reach.get(K(x, y));
     if (!n || !canStop(UI.sel, x, y)) { cancel(); return; }
     let path = pathTo(UI.reach, x, y), trapped = false; UI.mode = 'busy';
@@ -581,23 +657,24 @@ function openActions(u) {
    (worked out from the best tile it could attack from). Damage range, the target's HP before and after,
    the counter-attack you would take, and why the numbers are what they are. */
 function attackFrom(u, t) {                             // the tile the selected unit would fire from: where it stands, or the safest reachable tile in range
-  if (u.d.indirect || u.d.fixed || inRange(u, u.x, u.y, t)) return inRange(u, u.x, u.y, t) ? [u.x, u.y] : null;
+  if ((u.d.indirect && u.role !== 'dd') || u.d.fixed || inRange(u, u.x, u.y, t)) return inRange(u, u.x, u.y, t) ? [u.x, u.y] : null;
   let best = null, bs = -1;
   for (const n of (UI.reach || new Map()).values()) {
-    if (!inRange(u, n.x, n.y, t) || !canStop(u, n.x, n.y) || (unitAt(n.x, n.y) && unitAt(n.x, n.y) !== u)) continue;
+    if (!(u.d.indirect ? t.d.sub && closeShot(u, t, Math.abs(t.x - n.x) + Math.abs(t.y - n.y)) : inRange(u, n.x, n.y, t)) || !canStop(u, n.x, n.y) || (unitAt(n.x, n.y) && unitAt(n.x, n.y) !== u)) continue;
     const s = TER[terr(n.x, n.y)].def; if (s > bs) { bs = s; best = [n.x, n.y]; }
   }
   return best;
 }
 function forecastHTML(u, t, ax, ay, firing) {
   const span = (a, b) => a === b ? String(a) : a + '–' + b, hp = v => Math.max(0, Math.ceil(v / 10));
-  const lo = calcDamage(u, t, u.hp, 0, ax, ay), hi = calcDamage(u, t, u.hp, 9, ax, ay);
+  const lo = Math.min(t.hp, calcDamage(u, t, u.hp, 0, ax, ay)), hi = Math.min(t.hp, calcDamage(u, t, u.hp, 9, ax, ay));   /* never more than it has left (learned from Neon) */
   const stars = t.d.air ? 0 : TER[terr(t.x, t.y)].def + (t.dug ? 1 : 0);
   let h = `<div class="fc-row"><b class="fc-me">${u.d.n}</b> ▶ <b class="fc-foe">${t.d.n}</b> <span class="fc-dim">${t.d.air ? 'in the air' : TER[terr(t.x, t.y)].n + ' ' + '★'.repeat(stars) + (t.dug ? ' (dug in)' : '')}</span></div>`;
   h += `<div class="fc-row">Damage <b>${span(lo, hi)}%</b> · its HP ${hp(t.hp)} → <b>${span(hp(t.hp - hi), hp(t.hp - lo))}</b>${lo >= t.hp ? ' <b class="fc-kill">DESTROYS</b>' : hi >= t.hp ? ' <span class="fc-may">may destroy</span>' : ''}</div>`;
   const tFrom = Object.assign({}, u, {x:ax, y:ay, dug:ax === u.x && ay === u.y && u.dug});   // a foxhole only counts if it fires from where it dug in
   if (lo < t.hp && canCounter(t, tFrom)) {
-    const c1 = calcDamage(Object.assign({}, t, {hp:t.hp - hi}), tFrom, Math.max(1, t.hp - hi), 0, t.x, t.y, ax, ay), c2 = calcDamage(Object.assign({}, t, {hp:t.hp - lo}), tFrom, t.hp - lo, 9, t.x, t.y, ax, ay);
+    let c1 = calcDamage(Object.assign({}, t, {hp:t.hp - hi}), tFrom, Math.max(1, t.hp - hi), 0, t.x, t.y, ax, ay), c2 = calcDamage(Object.assign({}, t, {hp:t.hp - lo}), tFrom, t.hp - lo, 9, t.x, t.y, ax, ay), cl = v => Math.min(u.hp, v);
+    c1 = cl(c1); c2 = cl(Math.max(c1, c2));
     h += `<div class="fc-row">Counter <b class="fc-foe">${span(c1, c2)}%</b> · your HP ${hp(u.hp)} → ${span(hp(u.hp - c2), hp(u.hp - c1))}${c2 >= u.hp ? ' <span class="fc-may">could lose it</span>' : ''}</div>`;
   } else h += `<div class="fc-row fc-dim">${lo >= t.hp ? 'No counter: it will not survive' : u.d.indirect ? 'Indirect fire: no counter' : !canHit(t, u) ? 'It cannot fire back at you' : 'No counter-attack'}</div>`;
   // why: the pieces of the damage sum (engine.js calcDamage)
@@ -637,7 +714,7 @@ function openBuild(p) {
   const roles = buildable(G.turn, kind);
   const items = roles.map(r => { const d = udef(T.nat, r), c = unitCost(G.turn, r);
     return {html:`<span class="bi"></span><span class="bn">${d.n}<small>${d.w} · move ${d.mv}${d.rng[1] ? ' · range ' + (d.rng[0] === d.rng[1] ? d.rng[0] : d.rng[0] + '–' + d.rng[1]) : ''}</small></span><span class="bc">${fmt(c)}</span>`, disabled:c > T.funds, role:r,
-      fn:() => { T.funds -= c; const u = spawn(G.turn, {role:r, x:p.x, y:p.y, hp:100}); u.done = true; u.moved = true; sfx('build'); closeMenu(); UI.mode = 'idle'; fx('smoke', p.x, p.y); hud(); if (Math.random() < .6) setTimeout(() => fxBark(u, 'new'), 500); }}; });
+      fn:() => { T.funds -= c; const u = spawn(G.turn, {role:r, x:p.x, y:p.y, hp:100}); u.done = true; u.moved = true; u.bought = true; sfx('build'); closeMenu(); autosave();   /* saved at once: a reload must not refund the unit and lose it */ UI.mode = 'idle'; fx('smoke', p.x, p.y); hud(); if (Math.random() < .6) setTimeout(() => fxBark(u, 'new'), 500); }}; });
   items.push({label:'Close', fn:() => { closeMenu(); UI.mode = 'idle'; }});
   menuAt(items, p.x, p.y);
   const m = $('#menu'); m.classList.add('build');
@@ -667,21 +744,46 @@ function showCO(id) {
 }
 
 let drag = null;
-cv.addEventListener('pointerdown', e => { auInit(); drag = {x:e.clientX, y:e.clientY, cx:cam.x, cy:cam.y, moved:false, id:e.pointerId}; });
+/* touch: two fingers pinch to zoom; one finger drags the map, and a tap that only looks (terrain, an enemy in range) asks for a second tap to act */
+const PTRS = new Map(); let pinch = null;
+/* the ghost tap (learned from Neon Protocol): the map acts on pointerup, then the browser fires its own click at the same spot.
+   If the tap opened a menu, that click lands on the row under the finger and buys a tank. A touch or pen press that began on the
+   map may not click anything else for a second; keyboard and scripted clicks (detail 0) and mouse clicks pass. */
+const TAP = {t:0, onMap:false, touch:false};
+addEventListener('pointerdown', e => { TAP.t = performance.now(); TAP.onMap = e.target === cv; TAP.touch = e.pointerType === 'touch' || e.pointerType === 'pen'; }, true);
+addEventListener('click', e => { if (TAP.onMap && TAP.touch && e.detail > 0 && e.target !== cv && performance.now() - TAP.t < 1000) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+cv.addEventListener('pointerdown', e => { auInit(); UI.touch = e.pointerType === 'touch'; PTRS.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if (UI.touch && G) tip('touch', 'Drag to scroll the map and pinch to zoom. Tap a unit, then tap where it should go. Tap an enemy once to see the odds, and again to attack. Tap empty ground to see what it is; tap it again for the menu.');
+  if (PTRS.size === 2) { const [a, b] = [...PTRS.values()]; pinch = {d:Math.hypot(a.x - b.x, a.y - b.y) || 1, z:cam.z}; if (drag) drag.moved = true; return; }   // a second finger turns the drag into a pinch
+  drag = {x:e.clientX, y:e.clientY, cx:cam.x, cy:cam.y, moved:false, id:e.pointerId}; });
+addEventListener('pointercancel', e => { PTRS.delete(e.pointerId); if (PTRS.size < 2) pinch = null; if (drag && drag.id === e.pointerId) drag = null; });
 addEventListener('pointermove', e => {
   if (!G || document.body.dataset.screen !== 'game') return;
+  if (PTRS.has(e.pointerId)) PTRS.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if (pinch && PTRS.size === 2) { const [a, b] = [...PTRS.values()]; zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d); return; }
   if (drag && e.pointerId === drag.id) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 8) drag.moved = true; if (drag.moved) { cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z; clampCam(); } return; }
   if (e.target !== cv) return;
   const [x, y] = screenToTile(e.clientX, e.clientY); if (!inside(x, y)) return;
   if (x !== UI.cursor.x || y !== UI.cursor.y) { UI.cursor = {x, y}; hoverUpdate(); }
 });
 addEventListener('pointerup', e => {
+  PTRS.delete(e.pointerId); if (PTRS.size < 2) pinch = null;
   if (!drag || e.pointerId !== drag.id) return; const d = drag; drag = null;
   if (d.moved || e.target !== cv) return;
   const [x, y] = screenToTile(e.clientX, e.clientY);
   if (e.button === 2) { cancel(); return; }
+  if (UI.touch && touchPeek(x, y)) return;
   tileAction(x, y);
 });
+function touchPeek(x, y) {                                // a finger cannot hover: the first tap shows what a mouse-over would, the second acts
+  const k = K(x, y), again = UI.peek === k; UI.peek = null;
+  if (again || !G || UI.busy || G.over || isAI(G.turn) || isRemote(G.turn) || !inside(x, y)) return false;
+  const u = unitAt(x, y);
+  const look = UI.mode === 'move' && UI.sel && u && u.team !== UI.sel.team && seen(u) && canHit(UI.sel, u)   // an enemy in range: the odds first
+    || UI.mode === 'idle' && !u && !(propAt(x, y) && propAt(x, y).owner === G.turn && TER[terr(x, y)].makes);   // bare ground: what it is, not the menu
+  if (!look) return false;
+  UI.peek = k; UI.cursor = {x, y}; hoverUpdate(); sfx('click'); return true;
+}
 function tileAction(x, y) {
   if (UI.mode === 'target') { const t = unitAt(x, y); if (t && UI.targets.some(([a, b]) => a === x && b === y)) fireAt(t); else cancel(); return; }
   if (UI.mode === 'unload') { if (UI.targets.some(([a, b]) => a === x && b === y)) { const u = UI.sel; doUnload(u, UI.cargoPick, x, y); sfx('select'); if (u.cargo.length && u.cargo.some(c => unloadSpots(u, u.x, u.y, c).length)) { u.moved = true; UI.mode = 'menu'; openActions(u); } else finishAction(u); } else cancel(); return; }
@@ -702,6 +804,21 @@ async function fireAt(t) {
   UI.busy = false;
   if (G.units.includes(u)) finishAction(u); else { UI.mode = 'idle'; UI.sel = null; hud(); if (checkEnd()) gameOver(); }
 }
+/* overlays answer the keyboard: Enter takes the main button, Escape the way out, and Tab stays inside them; screen readers hear them as dialogs */
+const OVERLAYS = ['#codebox', '#result', '#netbox', '#handoff', '#tip'];
+function openOverlay() { for (const id of OVERLAYS) { const el = $(id); if (el && !el.hidden) return el; } return null; }
+function overlayButtons(el) { return [...el.querySelectorAll('button:not([disabled]), textarea, input, select')].filter(b => !b.hidden && b.offsetParent !== null); }
+function overlayPrimary(el) { return el.querySelector('.ok:not([hidden]), #resultok, button.go, button') ; }
+addEventListener('keydown', e => {
+  const el = openOverlay(); if (!el) return;
+  if (e.key === 'Escape') { const c = el.querySelector('.cancel, .close'); if (c) { e.preventDefault(); e.stopImmediatePropagation(); c.click(); } else if (el.id === 'tip') { e.preventDefault(); e.stopImmediatePropagation(); el.querySelector('button')?.click(); } return; }
+  if (e.key === 'Tab') { const bs = overlayButtons(el); if (!bs.length) return; e.preventDefault(); e.stopImmediatePropagation(); const i = bs.indexOf(document.activeElement); bs[(i + (e.shiftKey ? -1 : 1) + bs.length) % bs.length].focus(); return; }
+  if (e.key === 'Enter' && document.activeElement && document.activeElement.tagName === 'TEXTAREA') return;
+  if (e.key === 'Enter' && el.id !== 'tip') { const b = el.contains(document.activeElement) && document.activeElement.tagName === 'BUTTON' ? document.activeElement : overlayPrimary(el); if (b) { e.preventDefault(); e.stopImmediatePropagation(); b.click(); } return; }
+  if (el.id !== 'tip') e.stopImmediatePropagation();       // the map behind does not take orders while a dialog is up
+}, true);
+new MutationObserver(ms => { for (const m of ms) { const el = m.target; if (el.hidden || el.id === 'tip' || !OVERLAYS.includes('#' + el.id)) continue; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); const b = overlayPrimary(el); if (b && !el.contains(document.activeElement)) setTimeout(() => (el.querySelector('textarea:not([readonly])') || b).focus(), 30); } })
+  .observe(document.body, {subtree:true, attributes:true, attributeFilter:['hidden']});
 addEventListener('keydown', e => {
   if (!G || document.body.dataset.screen !== 'game' || !$('#dialog').hidden) return;
   const k = e.key, mv = {ArrowLeft:[-1, 0], ArrowRight:[1, 0], ArrowUp:[0, -1], ArrowDown:[0, 1], a:[-1, 0], d:[1, 0], w:[0, -1], s:[0, 1]}[k];
@@ -723,7 +840,9 @@ addEventListener('keydown', e => {
   if (k === 't' || k === 'T') toggleDanger();
   if (k === 'u' || k === 'U') toggleMine();
   if (k === 'n' || k === 'N') nextUnit();
-  if (k === 'm' || k === 'M') $('#minimap').classList.toggle('off');
+  if (k === 'm' || k === 'M') toggleMinimap();
+  if (k === 'v' || k === 'V') toggleHud();
+  if (k === 'Escape' && document.body.classList.contains('hudless')) toggleHud(false);
   if (k === '+' || k === '=') zoomAt(innerWidth / 2, innerHeight / 2, cam.z * 1.2);
   if (k === '-') zoomAt(innerWidth / 2, innerHeight / 2, cam.z / 1.2);
 });
@@ -740,16 +859,28 @@ function undoPendingMove() {
   const u = UI.sel; if (u && UI.origin && !u.moved && !u.done && G.units.includes(u)) { u.x = UI.origin.x; u.y = UI.origin.y; }
   UI.mode = 'idle'; UI.sel = null; UI.reach = null; UI.zone = null; try { closeMenu(); } catch (e) {}
 }
-function autosave() { try { if (!G.over && !G.online) localStorage.setItem('if44auto2', serial()); } catch (e) {} }
+function autosave() { try { if (!G.over && !G.online && !G.edtest && !G.watch) localStorage.setItem('if44auto2', serial()); } catch (e) {} }   // a Map Builder test run never overwrites a real battle's save
 function clearAutosave() { try { localStorage.removeItem('if44auto2'); } catch (e) {} }
 
 /* ---------- screens ---------- */
+function zoomStep(k) { if (G) zoomAt(innerWidth / 2, innerHeight / 2, cam.z * k); }
+function toggleMinimap() { const m = $('#minimap'), off = m.classList.toggle('off'), b = $('#maptoggle'); if (b) { b.setAttribute('aria-pressed', String(!off)); b.classList.toggle('on', !off); } }
+/* hide the interface to look at the map: the button stays, everything else steps aside until pressed again (or V) */
+function toggleHud(force) {
+  const off = typeof force === 'boolean' ? force : !document.body.classList.contains('hudless'), b = $('#hudtoggle');
+  document.body.classList.toggle('hudless', off);
+  if (b) { b.setAttribute('aria-pressed', String(off)); b.setAttribute('aria-label', off ? 'Show the interface' : 'Hide the interface'); b.querySelector('span').textContent = off ? 'Show UI' : 'Hide UI'; b.classList.toggle('on', !off); }
+  if (G && !off) hud();
+}
 function show(id) {
+  if (id !== 'gamehud' && document.body.classList.contains('hudless')) toggleHud(false);
   document.querySelectorAll('.screen').forEach(s => s.hidden = s.id !== id);
   document.body.dataset.screen = id === 'gamehud' ? 'game' : id;
   if (id === 'title') drawTitle();
 }
 function startGame(cfg) {
+  let saved = null; try { saved = localStorage.getItem('if44auto2'); } catch (e) {}
+  if (saved && !cfg.watch && !cfg.edtest && !FAST && !confirm('You have a battle in progress (Continue, on the title screen). Start this one instead? The saved battle will be lost.')) return false;   // one save slot: never wipe it silently
   EPOCH++; UI.busy = false;
   UI.overShown = false; UID = 1; FX.parts = []; FX.flyers = [];
   newGame(cfg); G.firstTeam = 1;
@@ -803,11 +934,13 @@ function openCampaign(c) {
     const m = MISSIONS[id], open = i === 0 || p.done[c.missions[i - 1]] || p.all, done = p.done[id];
     const b = document.createElement('button'); b.className = 'mission' + (done ? ' done' : '');
     b.disabled = !open;
-    b.innerHTML = `<span class="no">${i + 1}</span><span class="mt"><b>${m.name}</b><small>${m.place} · ${m.date}${diffText(id)}</small></span><span class="fl"></span>${done ? `<span class="stamp">TAKEN${p.rank && p.rank[id] ? ' · ' + p.rank[id] : ''}</span>` : ''}`;
+    const lockWhy = open ? '' : ` · 🔒 win ${MISSIONS[c.missions[i - 1]].name} to unlock`;
+    b.innerHTML = `<span class="no">${i + 1}</span><span class="mt"><b>${m.name}</b><small>${m.place} · ${m.date}${open ? diffText(id) : lockWhy}</small></span><span class="fl"></span>${done ? `<span class="stamp">TAKEN${p.rank && p.rank[id] ? ' · ' + p.rank[id] : ''}</span>` : ''}`;
     b.querySelector('.fl').append(flagCanvas(m.p1.nat, 24, 16), flagCanvas(m.p2.nat, 24, 16));
     b.onclick = () => { sfx('click'); openBrief(m); };
     list.append(b);
   });
+  const ua = $('#unlockall'); if (ua) ua.textContent = p.all ? 'Restore campaign order' : 'Unlock all missions';
   show('campaign');
   animateWarMap($('#campmap'), c, c.missions.find(id => !p.done[id]) || c.missions[c.missions.length - 1], 'campaign');
 }
@@ -818,7 +951,8 @@ function opLine(m) { const c = missionCampaign(m); return c ? `${c.name} · batt
 function animateWarMap(c, camp, id, screen) {
   const view = camp ? campaignView(camp) : null, cv = c;
   cv.width = Math.min(900, cv.clientWidth || 860) * dpr; cv.height = cv.width * .42;
-  const tick = () => { if (document.body.dataset.screen !== screen) return; drawWarMap(cv, camp, id, view); requestAnimationFrame(tick); };
+  const token = cv._loop = (cv._loop || 0) + 1;         // one loop per canvas: reopening the screen replaces the old loop rather than stacking another
+  const tick = () => { if (document.body.dataset.screen !== screen || cv._loop !== token) return; drawWarMap(cv, camp, id, view); requestAnimationFrame(tick); };
   tick();
 }
 function openBrief(m) {
@@ -827,7 +961,7 @@ function openBrief(m) {
   b.querySelector('h2').textContent = m.name;
   b.querySelector('.when').textContent = `${m.place} · ${m.date} · each turn is ${stepText(m.clock.step)}${m.fog ? ' · fog of war' : ''}${diffText(m.id)}`;
   b.querySelector('.story').textContent = m.brief;
-  b.querySelector('.goal').textContent = goalText(m) + (m.objective.win === 'survive' ? ' Keep at least half of the towns, depots and airfields you start with: lose too much ground and the position is overrun.' : '') + (m.hard ? ' This battle was lost in history: expect one of the hardest fights in the game.' : '');
+  b.querySelector('.goal').textContent = goalText(m) + (m.objective.win === 'survive' ? ' Keep at least half of the towns, depots and airfields you start with: lose too much ground and the position is overrun.' : '') + (m.hard ? ' This battle was lost in real life: expect one of the hardest fights in the game.' : '');
   b.querySelector('.forces').innerHTML = h.forces ? [m.p1, m.p2].map((p, i) => `<div><h5>${NATION[p.nat].n}: the real forces</h5><p>${h.forces[i]}</p></div>`).join('') : '';
   b.querySelector('.stakes').hidden = !h.win;
   b.querySelector('.stakes .win p').textContent = h.win || ''; b.querySelector('.stakes .lose p').textContent = h.lose || '';
@@ -855,7 +989,7 @@ function openAftermath(m, won) {
   const go = a.querySelector('.go');
   go.textContent = next ? 'Next battle: ' + next.name : won ? 'Back to campaigns' : 'Try again';
   go.onclick = () => { sfx('select'); if (next) openBrief(next); else if (won) openCampaigns(); else openBrief(m); };
-  show('after'); musicMood(won ? 'victory' : 'brief');
+  show('after'); musicMood(won ? 'victory' : 'brief', false, won && m.p1 ? m.p1.nat : null);
   animateWarMap(a.querySelector('.warmap'), camp, next ? next.id : m.id, 'after');
 }
 function drawMinimapPreview(c, rows, theme) {
@@ -900,7 +1034,7 @@ function openCredits() {
   $('#credlist').innerHTML = '<h4>Music</h4>' + MUSIC.tracks.map(m => `<p><b>${m.title}</b><br>${m.by} · ${m.lic}</p>`).join('') +
     '<h4>Recorded sound</h4>' + SFX_CREDITS.concat(typeof SFX_LIB_CREDITS !== 'undefined' ? SFX_LIB_CREDITS : []).map(([a, b, c]) => `<p><b>${a}</b><br>${b} · ${c}</p>`).join('') +
     '<p>Music and the first three sounds from Wikimedia Commons; the rest of the sound library from Freesound.org. CC BY / CC BY-SA works are used under those licences; "Duet Musette" by Kevin MacLeod (incompetech.com), licensed under Creative Commons: By Attribution 3.0.</p>' +
-    '<h4>History</h4><p>Unit designations, generals and dates follow the 1943–45 campaigns in Western Europe and on the Eastern Front. German flags can be switched to the Balkenkreuz in Settings.</p>';
+    '<h4>History</h4><p>Unit designations, generals and dates follow the real campaigns of 1937–45, from China to Berlin. German flags can be switched to the Balkenkreuz in Settings.</p>';
   show('credits');
 }
 
@@ -983,6 +1117,9 @@ function boot() {
   on('#continue', continueGame);
   document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => { sfx('cancel'); const to = b.dataset.to || 'title'; if (to === 'campaign' && UI.campaign) openCampaign(UI.campaign); else if (to === 'campaigns') openCampaigns(); else show(to); }));
   on('#sgo', launchSkirmish); on('#optsave', () => { applySettings(); show('title'); });
+  on('#hudtoggle', toggleHud); on('#zoomin', () => zoomStep(1.25)); on('#zoomout', () => zoomStep(1 / 1.25)); on('#maptoggle', toggleMinimap);
+  on('#progexport', progExport); on('#progimport', () => $('#progfile').click()); $('#progfile').addEventListener('change', e => { if (e.target.files[0]) progImport(e.target.files[0]); e.target.value = ''; });
+  on('#tipsagain', () => { tipsReset(); SET.tips = true; $('#opttips').checked = true; $('#progmsg').textContent = 'The field notes will show again as you play.'; });
   on('#endturn', endTurnClick); on('#danger', toggleDanger); on('#mine', toggleMine); on('#nextu', nextUnit); on('#cop', () => usePower(G.turn, 1)); on('#scop', () => usePower(G.turn, 2));
   on('#ffwd', () => { SET.aiFast = !SET.aiFast; saveSet(); $('#ffwd').classList.toggle('on', SET.aiFast); });
   on('#quit', () => { if (G && !G.over) { undoPendingMove(); autosave(); } EPOCH++; UI.busy = false; show('title'); musicMood('title'); });
@@ -991,7 +1128,11 @@ function boot() {
   on('#bwaves', () => openLastStand()); on('#bzed', openZombies); on('#zgo', launchZombies); on('#bwarmap', openWarView); on('#brecord', openRecord); on('#beditor', () => openEditor()); on('#lsgo', launchLastStand); edBoot();
   on('#resultok', () => { $('#result').hidden = true; if (UI.fromEditor && !G.mission) { UI.fromEditor = false; return openEditor(); } G.mission && HISTORY[G.mission.id] ? openAftermath(G.mission, UI.lastWon) : G.mission && UI.campaign ? openCampaign(UI.campaign) : G.mission ? openCampaigns() : show('title'); });
   document.querySelectorAll('#arctabs button').forEach(b => b.addEventListener('click', () => { sfx('click'); openArchive(b.dataset.t); }));
-  on('#unlockall', () => { const p = loadProg(); p.all = true; saveProg(p); if (UI.campaign) openCampaign(UI.campaign); });
+  on('#unlockall', () => {                               // a toggle with a warning: opening every battle skips the campaign's order, and it can be undone
+    const p = loadProg();
+    if (!p.all && !confirm('Open every battle in every campaign, out of order? You can lock them again here.')) return;
+    p.all = !p.all; saveProg(p); if (UI.campaign) openCampaign(UI.campaign);
+  });
   document.addEventListener('pointerdown', () => { auInit(); if (!MUSIC.mood) musicMood('title'); }, {once:true});
   show('title'); padPoll(); if (!location.hash) setTimeout(() => showDespatch(), 600);
   if (['#validate', '#autoplay', '#testers'].includes(location.hash)) runTests(location.hash.slice(1));
@@ -1034,7 +1175,15 @@ function showDespatch(force) {
   if (!force && seen >= GAME_VERSION) return;
   try { localStorage.setItem('if44seen', String(GAME_VERSION)); } catch (e) {}
   let veteran = false; try { veteran = !!(localStorage.getItem('if44prog2') || localStorage.getItem('if44auto2') || localStorage.getItem('if44set')); } catch (e) {}
-  if (!force && !seen && !veteran) return;                        // a brand-new player has no news to catch up on
+  if (!force && !seen && !veteran) {                               // a brand-new player has no news to catch up on: point them at Basic Training instead
+    const box = $('#codebox'), ta = box.querySelector('#codetext'); box.hidden = false; ta.hidden = true;
+    box.querySelector('h3').textContent = 'New recruit?';
+    box.querySelector('p').textContent = 'Start with Basic Training: about ten minutes on Salisbury Plain that teaches moving, firing, cover and capturing, one lesson a turn.';
+    box.querySelector('small').textContent = ''; box.querySelector('.cancel').textContent = 'Not now'; box.querySelector('.ok').textContent = 'Basic Training';
+    const close = () => { box.hidden = true; ta.hidden = false; };
+    box.querySelector('.cancel').onclick = close; box.querySelector('.ok').onclick = () => { close(); openBrief(MISSIONS.training); };
+    return;
+  }
   const box = $('#codebox'); box.hidden = false; box.querySelector('h3').textContent = 'Despatches from the front';
   box.querySelector('p').textContent = 'What has changed since you were last here:';
   const ta = box.querySelector('#codetext'); ta.readOnly = true; ta.value = DESPATCH.map(([a, b]) => `${a.toUpperCase()}\n${b}`).join('\n\n');

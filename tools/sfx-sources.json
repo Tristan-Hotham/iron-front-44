@@ -520,5 +520,194 @@
         "lic":  "CC BY 4.0",
         "dur":  0.2,
         "kb":  7
+    },
+    {
+        "file":  "splash-big.mp3",
+        "id":  "442773",
+        "user":  "qubodup",
+        "title":  "Big Water Splash",
+        "lic":  "CC0",
+        "dur":  2.2,
+        "kb":  18
+    },
+    {
+        "file":  "water-explosion.mp3",
+        "id":  "519008",
+        "user":  "Sheyvan",
+        "title":  "Water Explosion",
+        "lic":  "CC0",
+        "dur":  2,
+        "kb":  17
+    },
+    {
+        "file":  "underwater-explosion.mp3",
+        "id":  "124544",
+        "user":  "cubix",
+        "title":  "underwater explosion.wav",
+        "lic":  "CC0",
+        "dur":  5.6,
+        "kb":  45
+    },
+    {
+        "file":  "water-column.mp3",
+        "id":  "212689",
+        "user":  "TB0Y298",
+        "title":  "Water explosion 1",
+        "lic":  "CC0",
+        "dur":  2.8,
+        "kb":  20
+    },
+    {
+        "file":  "stuka-dive.mp3",
+        "id":  "720988",
+        "user":  "Mastersoundboy2005",
+        "title":  "Screaming Stuka Airplane",
+        "lic":  "CC0",
+        "dur":  18.7,
+        "kb":  128
+    },
+    {
+        "file":  "mustang-pass.mp3",
+        "id":  "437786",
+        "user":  "craigsmith",
+        "title":  "G04-20_P-51 Mustang Passes 3 Times fast.wav",
+        "lic":  "CC0",
+        "dur":  103,
+        "kb":  835
+    },
+    {
+        "file":  "radial-flyby.mp3",
+        "id":  "431206",
+        "user":  "oscaraudiogeek",
+        "title":  "Airplane Flyby",
+        "lic":  "CC0",
+        "dur":  15.8,
+        "kb":  130
+    },
+    {
+        "file":  "biplane-flyby.mp3",
+        "id":  "648720",
+        "user":  "itinerantmonk108",
+        "title":  "Bi-plane flyby.wav",
+        "lic":  "CC0",
+        "dur":  14.3,
+        "kb":  117
+    },
+    {
+        "file":  "b25-flyover.mp3",
+        "id":  "221899",
+        "user":  "tubbers",
+        "title":  "B-25 FLYOVER.wav",
+        "lic":  "CC0",
+        "dur":  43.6,
+        "kb":  301
+    },
+    {
+        "file":  "bombers-overhead.mp3",
+        "id":  "213099",
+        "user":  "SoundsExciting",
+        "title":  "War Planes Overhead!",
+        "lic":  "CC0",
+        "dur":  24.7,
+        "kb":  202
+    },
+    {
+        "file":  "plane-spin-dive.mp3",
+        "id":  "437748",
+        "user":  "craigsmith",
+        "title":  "G02-24-Prop Plane Spins and Dives.wav",
+        "lic":  "CC0",
+        "dur":  48,
+        "kb":  394
+    },
+    {
+        "file":  "ship-engine-room.mp3",
+        "id":  "74915",
+        "user":  "mrmayo",
+        "title":  "ferry engine room2.wav",
+        "lic":  "CC0",
+        "dur":  58.8,
+        "kb":  475
+    },
+    {
+        "file":  "ship-wake.mp3",
+        "id":  "74916",
+        "user":  "mrmayo",
+        "title":  "back of ferry boat.wav",
+        "lic":  "CC0",
+        "dur":  128.7,
+        "kb":  1043
+    },
+    {
+        "file":  "boat-diesel.mp3",
+        "id":  "264864",
+        "user":  "AugustSandberg",
+        "title":  "Marine diesel engine",
+        "lic":  "CC0",
+        "dur":  73.4,
+        "kb":  741
+    },
+    {
+        "file":  "boat-passing.mp3",
+        "id":  "195892",
+        "user":  "miklovan",
+        "title":  "Boat on the Gulf of Finland",
+        "lic":  "CC0",
+        "dur":  47.6,
+        "kb":  414
+    },
+    {
+        "file":  "naval-5in.mp3",
+        "id":  "184728",
+        "user":  "qubodup",
+        "title":  "MK 45 Gun Fired.flac",
+        "lic":  "CC0",
+        "dur":  15,
+        "kb":  122
+    },
+    {
+        "file":  "artillery-real.mp3",
+        "id":  "182822",
+        "user":  "qubodup",
+        "title":  "Artillery Shots.flac",
+        "lic":  "CC0",
+        "dur":  41.2,
+        "kb":  311
+    },
+    {
+        "file":  "torpedo-run.mp3",
+        "id":  "336469",
+        "user":  "csaszi",
+        "title":  "Underwater_torpedo pass bys_CsG.wav",
+        "lic":  "CC0",
+        "dur":  38.8,
+        "kb":  273
+    },
+    {
+        "file":  "depth-charge.mp3",
+        "id":  "438713",
+        "user":  "craigsmith",
+        "title":  "G45-11-Submarine Depth Charge.wav",
+        "lic":  "CC0",
+        "dur":  60.9,
+        "kb":  514
+    },
+    {
+        "file":  "sonar-ping.mp3",
+        "id":  "12677",
+        "user":  "Peter_Gross",
+        "title":  "Sonar_pings.ogg",
+        "lic":  "CC0",
+        "dur":  3.7,
+        "kb":  28
+    },
+    {
+        "file":  "mauser-shot.mp3",
+        "id":  "802675",
+        "user":  "Walking.With.Microphones",
+        "title":  "Mauser 98k Shooting",
+        "lic":  "CC0",
+        "dur":  2.1,
+        "kb":  14
     }
 ]

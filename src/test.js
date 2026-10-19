@@ -25,12 +25,12 @@ function validateMission(m) {
 }
 /* debugging aid: play a mission AI-vs-AI up to a day and leave G for inspection */
 function simTo(id, days) { const r = autoplayMission(MISSIONS[id], days, true); FAST = false; return r; }
-function autoplayMission(m, maxDays = 40, keep = false, onMove = null) {
+function autoplayMission(m, maxDays = 40, keep = false, onMove = null, prep = null, onTurn = null) {
   FAST = true; const cfg = m.map ? JSON.parse(JSON.stringify(m)) : missionCfg(m); cfg.teams[1].ai = true; cfg.teams[2].ai = true;
-  newGame(cfg); G.firstTeam = 1;
+  newGame(cfg); G.firstTeam = 1; if (prep) prep(cfg);
   const t0 = performance.now(); let steps = 0, powers = 0;
   while (!G.over && G.day <= maxDays) {
-    const team = G.turn; startTurn(team);
+    const team = G.turn; startTurn(team); if (onTurn) onTurn(team);
     for (const e of dueEvents()) runEvent(e);
     if (checkEnd()) break;
     const lv = aiPower(team); if (lv) { activatePower(team, lv); powers++; }
@@ -76,6 +76,88 @@ function runTests(kind) {
     for (const m of Object.values(MISSIONS)) { try { const r = autoplayMission(m); res.push(r); log(`${r.id.padEnd(12)} winner ${r.winner} (${r.why}) day ${r.day}  units ${r.units.join('/')}  vets ${r.vets}  powers ${r.powers}  ${r.steps} moves  ${r.ms} ms`); } catch (e) { log(`CRASH ${m.id}: ${e.stack}`); res.push({id:m.id, crash:String(e)}); } }
     window.TEST.autoplay = res; log('autoplay done');
   }, 50);
+}
+
+/* ---------- a whole campaign, the way a player meets it: in order, veterans carried forward, the medal at the end ----------
+   Plays as team 1 with the tester personas, retrying a lost battle as a player would, and runs the game's own
+   bookkeeping after each battle (progress, the core force, medals). The real saved progress is put back afterwards. */
+function campaignTest(cid, personas = ['methodical', 'aggressive', 'opportunist', 'cautious'], tries = 4) {
+  const camp = CAMPAIGNS.find(c => c.id === cid), saved = localStorage.getItem('if44prog2'), rows = [], medals = [];
+  saveProg({done:{}, core:{}, all:false});
+  try {
+    for (let i = 0; i < camp.missions.length; i++) {
+      const id = camp.missions[i], m = MISSIONS[id];
+      if (!(i === 0 || loadProg().done[camp.missions[i - 1]])) { rows.push(`${id}: LOCKED after the previous battle was won`); break; }
+      let r = null, n = 0, vets = 0, who = '';
+      for (; n < tries; n++) {
+        who = personas[n % personas.length]; TESTER[1] = who;
+        r = autoplayMission(m, 45, true, null, cfg => { deployCore(cfg.mission || m); vets = G.units.filter(u => u.core).length; });
+        TESTER[1] = null;
+        G.teams[1].ai = false;                                   // the bookkeeping treats team 1 as the human
+        const p = loadProg(), won = r.winner === 1;
+        if (won) { p.done[id] = true; updateCore(p); } else updateCore(p, true);
+        saveProg(p); medals.push(...recordGame(won)); G = null;
+        if (won) break;
+      }
+      const core = (loadProg().core[m.p1.nat] || []).length;
+      rows.push(`${id.padEnd(13)} ${r.winner === 1 ? 'won ' : 'LOST'} try ${Math.min(n + 1, tries)} (${who}) day ${r.day}  veterans in ${vets}  core force ${core}`);
+      if (r.winner !== 1) break;
+    }
+    const p = loadProg();
+    rows.push(`complete: ${camp.missions.every(id => p.done[id]) ? 'yes' : 'NO'}  medals: ${medals.map(medalName).join(', ') || 'none'}`);
+  } catch (e) { rows.push('CRASH ' + e.stack); }
+  finally { TESTER[1] = null; FAST = false; if (saved === null) localStorage.removeItem('if44prog2'); else localStorage.setItem('if44prog2', saved); }
+  return rows;
+}
+
+/* ---------- a big panel of testers: generated temperaments spread across the whole range, on every battle ---------- */
+function makeTesters(n = 34) {
+  let s = 4242; const R = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296, ids = [];
+  for (let i = 0; i < n; i++) {
+    const id = 'gen' + String(i + 1).padStart(2, '0');
+    PERSONAS[id] = {n:'Generated tester ' + (i + 1), adv:+(.2 + R() * 3).toFixed(2), cover:+(.2 + R() * 2.4).toFixed(2), fear:+(R() * 3).toFixed(2), atk:+(.4 + R() * 1.6).toFixed(2), cap:+(.3 + R() * 2).toFixed(2), noise:R() < .25 ? Math.round(R() * 2500) : 0, txt:'A generated tester.'};
+    ids.push(id);
+  }
+  return ids;
+}
+async function bigTest(ids, missions = Object.keys(MISSIONS), name = 'big') {
+  const lines = [], per = {}, t0 = performance.now();
+  for (const mid of missions) {
+    const m = MISSIONS[mid], res = [];
+    for (const who of ids) {
+      TESTER[1] = who; let r; try { r = autoplayMission(m, 45); } catch (e) { r = {crash:String(e && e.message || e)}; } TESTER[1] = null; res.push(r);
+      (per[who] = per[who] || [0, 0])[1]++; if (r.winner === 1) per[who][0]++;
+      await yieldNow();
+    }
+    const wins = res.filter(r => r.winner === 1), days = wins.map(r => r.day).sort((a, b) => a - b), crash = res.filter(r => r.crash), why = {};
+    for (const r of res) if (!r.crash) { const k = (r.winner === 1 ? 'W ' : r.winner === 2 ? 'L ' : '? ') + r.why; why[k] = (why[k] || 0) + 1; }
+    const rate = Math.round(100 * wins.length / res.length);
+    lines.push(`${mid.padEnd(13)} ${String(rate).padStart(3)}%  ${rate >= 95 ? 'TOO EASY' : rate <= 15 ? 'TOO HARD' : rate >= 85 ? 'easy    ' : rate <= 30 ? 'hard    ' : 'fair    '}  win days ${days[0] || '-'}-${days[days.length - 1] || '-'} (median ${days[days.length >> 1] || '-'})  ${Object.entries(why).map(([k, v]) => k + ' ' + v).join(', ')}${crash.length ? '  CRASH x' + crash.length + ': ' + crash[0].crash : ''}`);
+    window.BIG = {done:lines.length, of:missions.length, min:Math.round((performance.now() - t0) / 60000)};
+  }
+  lines.push('', 'win rate by tester:', ids.map(id => `${id} ${Math.round(100 * per[id][0] / per[id][1])}%`).join('  '));
+  await fetch('/report/' + name, {method:'POST', body:lines.join('\n')}); window.BIG.lines = lines; return lines;
+}
+
+/* ---------- Dead of Night: every persona, several maps and settings; how the waves grow, are cleared or pile up ---------- */
+function zedTest({personas = ['methodical', 'aggressive', 'cautious', 'opportunist', 'reckless', 'rusher', 'turtle', 'sniper'], maps = ['gen:normandy', 'gen:winter', 'm:stalingrad'], nat = 'us', co = 'patton', diff = 'normal', every = 3, night = 'endless', days = 30} = {}) {
+  const rows = [];
+  for (const mp of maps) for (const who of personas) {
+    const theme = mp.startsWith('gen:') ? mp.slice(4) : MISSIONS[mp.slice(2)].theme;
+    const map = mp.startsWith('gen:') ? genMap(theme, 34, 22, 1000 + personas.indexOf(who)) : missionMap(MISSIONS[mp.slice(2)]);
+    const cfg = wavesCfg({rows:map, theme, nat, co, enemy:'zed', eco:'horde', diff, funds:6000, every, name:'zedtest'});
+    cfg.waves.zed = true; cfg.waves.night = night; cfg.waves.next = 1; cfg.clock = {start:cfg.clock.start.slice(0, 11) + (night === 'endless' ? '23:00' : '18:00'), step:120};
+    const log = [], seen = {}; let peak = 0;
+    TESTER[1] = who;
+    let r; try {
+      r = autoplayMission(cfg, days, true, null, null, team => { if (team !== 1 || seen[G.day]) return; seen[G.day] = 1;
+        const z = G.units.filter(u => u.team === 2).length, me = G.units.filter(u => u.team === 1).length; peak = Math.max(peak, z); log.push(`${G.day}:w${G.waves.n}/z${z}/m${me}`); });
+    } catch (e) { rows.push(`${mp} ${who}: CRASH ${e.message}`); TESTER[1] = null; continue; }
+    TESTER[1] = null;
+    rows.push(`${mp.padEnd(14)} ${who.padEnd(11)} ${r.winner === 2 ? 'overrun' : 'held'} day ${r.day}  waves ${G.waves.n - 1}  peak ${peak} dead  | ${log.filter((_, i) => i % 3 === 0).join(' ')}`);
+    G = null;
+  }
+  FAST = false; return rows;
 }
 
 /* ---------- fairness: the AI must play the same from either side of a mirrored map ---------- */

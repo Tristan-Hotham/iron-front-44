@@ -132,5 +132,26 @@ The game code is MIT-licensed (see LICENSE). The music and recorded sounds are n
 | Desert Simple (sfx/amb-desert-wind.mp3) | Proxima4, [Freesound #104320](https://freesound.org/s/104320/) | CC0 |
 | ship horn (sfx/ship-horn.mp3) | monotraum, [Freesound #208714](https://freesound.org/s/208714/) | CC0 |
 | Flak_Shot (sfx/flak-shot.mp3) | kantouth, [Freesound #104399](https://freesound.org/s/104399/) | CC BY 4.0 |
+| Big Water Splash (sfx/splash-big.mp3) | qubodup, [Freesound #442773](https://freesound.org/s/442773/) | CC0 |
+| Water Explosion (sfx/water-explosion.mp3) | Sheyvan, [Freesound #519008](https://freesound.org/s/519008/) | CC0 |
+| underwater explosion (sfx/underwater-explosion.mp3) | cubix, [Freesound #124544](https://freesound.org/s/124544/) | CC0 |
+| Water explosion 1 (sfx/water-column.mp3) | TB0Y298, [Freesound #212689](https://freesound.org/s/212689/) | CC0 |
+| Screaming Stuka Airplane (sfx/stuka-dive.mp3) | Mastersoundboy2005, [Freesound #720988](https://freesound.org/s/720988/) | CC0 |
+| G04-20_P-51 Mustang Passes 3 Times fast (sfx/mustang-pass.mp3) | craigsmith, [Freesound #437786](https://freesound.org/s/437786/) | CC0 |
+| Airplane Flyby (sfx/radial-flyby.mp3) | oscaraudiogeek, [Freesound #431206](https://freesound.org/s/431206/) | CC0 |
+| Bi-plane flyby (sfx/biplane-flyby.mp3) | itinerantmonk108, [Freesound #648720](https://freesound.org/s/648720/) | CC0 |
+| B-25 FLYOVER (sfx/b25-flyover.mp3) | tubbers, [Freesound #221899](https://freesound.org/s/221899/) | CC0 |
+| War Planes Overhead! (sfx/bombers-overhead.mp3) | SoundsExciting, [Freesound #213099](https://freesound.org/s/213099/) | CC0 |
+| G02-24-Prop Plane Spins and Dives (sfx/plane-spin-dive.mp3) | craigsmith, [Freesound #437748](https://freesound.org/s/437748/) | CC0 |
+| ferry engine room2 (sfx/ship-engine-room.mp3) | mrmayo, [Freesound #74915](https://freesound.org/s/74915/) | CC0 |
+| back of ferry boat (sfx/ship-wake.mp3) | mrmayo, [Freesound #74916](https://freesound.org/s/74916/) | CC0 |
+| Marine diesel engine (sfx/boat-diesel.mp3) | AugustSandberg, [Freesound #264864](https://freesound.org/s/264864/) | CC0 |
+| Boat on the Gulf of Finland (sfx/boat-passing.mp3) | miklovan, [Freesound #195892](https://freesound.org/s/195892/) | CC0 |
+| MK 45 Gun Fired (sfx/naval-5in.mp3) | qubodup, [Freesound #184728](https://freesound.org/s/184728/) | CC0 |
+| Artillery Shots (sfx/artillery-real.mp3) | qubodup, [Freesound #182822](https://freesound.org/s/182822/) | CC0 |
+| Underwater_torpedo pass bys_CsG (sfx/torpedo-run.mp3) | csaszi, [Freesound #336469](https://freesound.org/s/336469/) | CC0 |
+| G45-11-Submarine Depth Charge (sfx/depth-charge.mp3) | craigsmith, [Freesound #438713](https://freesound.org/s/438713/) | CC0 |
+| Sonar_pings (sfx/sonar-ping.mp3) | Peter_Gross, [Freesound #12677](https://freesound.org/s/12677/) | CC0 |
+| Mauser 98k Shooting (sfx/mauser-shot.mp3) | Walking.With.Microphones, [Freesound #802675](https://freesound.org/s/802675/) | CC0 |
 
 "Duet Musette" by Kevin MacLeod (incompetech.com), licensed under Creative Commons: By Attribution 3.0. CC BY-SA recordings were re-encoded to mono Opus for size; those adaptations are shared under the same licence. Freesound sounds are the site's 128 kbps MP3 previews, used whole; the game cuts them into takes and varies their pitch as it plays them.

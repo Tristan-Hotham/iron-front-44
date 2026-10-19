@@ -36,7 +36,7 @@
 
 <!-- campaigns -->
 <section class="screen paper" id="campaigns" hidden>
-  <header><h2>Campaigns</h2><p>Eighty-two battles in thirteen campaigns, from Shanghai in 1937 through the Western Desert, Greece and Italy and the carrier war in the Pacific to Berlin in 1945, plus basic training. Veterans who survive carry on into the next fight.</p></header>
+  <header><h2>Campaigns</h2><p>Eighty-two battles in thirteen campaigns, from Shanghai in 1937 through the Western Desert, Greece, Italy and the carrier war in the Pacific to Berlin in 1945, plus basic training. Veterans who survive carry on into the next fight.</p></header>
   <div id="camplist"></div>
   <header class="sub"><h3>Core force</h3></header>
   <div id="corelist"></div>
@@ -94,7 +94,7 @@
 <section class="screen" id="editor" hidden>
   <div class="edbar">
     <b class="edtitle">Map Builder</b>
-    <button id="ednew">New</button><select id="edload"></select><button id="edsave">Save</button><button id="edexport">Share code</button><button id="edimport">Import</button>
+    <button id="ednew">New</button><select id="edload" aria-label="Load a saved map"></select><button id="edmanage" title="Rename or delete saved maps">Manage</button><button id="edsave">Save</button><button id="edexport">Share code</button><button id="edimport">Import</button>
     <span class="sep"></span><button id="edundo" title="Ctrl+Z">Undo</button><button id="edredo" title="Ctrl+Y">Redo</button><button id="edfit" title="F">Fit</button>
     <span class="sep"></span><button id="edquick" title="Place a standard force next to each HQ">Quick armies</button><button id="edplay" class="go">Play it</button><button id="edhot" title="Two players on one screen">Hotseat</button><button id="edwatch" title="Computer against computer">Watch</button><button id="edbal" title="AI testers play the map nine times and report on balance">Balance check</button><button id="edwaves">Last Stand</button>
     <span class="grow"></span><button id="edback">Back</button>
@@ -174,6 +174,11 @@
       <label>Master volume <input type="range" id="optvol" min="0" max="1" step=".05"></label>
       <label>Music <input type="range" id="optmvol" min="0" max="1" step=".05"></label>
       <label>Battlefield ambience <input type="range" id="optamb" min="0" max="1" step=".05"></label></fieldset>
+    <fieldset><legend>Your progress</legend>
+      <p class="note">Progress is kept in this browser. Save a copy to move it to another device, or to keep it safe if the browser's data is cleared.</p>
+      <div class="row"><button type="button" id="progexport">Save progress to a file</button><button type="button" id="progimport">Load progress from a file</button><input type="file" id="progfile" accept=".json,application/json" hidden></div>
+      <div class="row"><button type="button" id="tipsagain">Show the field notes again</button></div>
+      <small id="progmsg" aria-live="polite"></small></fieldset>
   </div>
   <footer><button class="back">Cancel</button><button id="optsave">Save</button></footer>
 </section>
@@ -182,13 +187,14 @@
 <section class="screen paper" id="help" hidden>
   <header><h2>Field manual</h2></header>
   <div class="manual">
-    <p><b>Orders.</b> Click a unit, then click where it should go. Choose <i>Fire</i>, <i>Capture</i>, <i>Clear obstacles</i>, <i>Unload</i> or <i>Wait</i>. Right-click or Esc steps back. Arrow keys and Enter work too; E ends the turn, M toggles the minimap, H asks your adviser for a suggested move. Click an enemy (or press R) to see what it can reach; press T, or the Danger button, to shade every tile any visible enemy could attack next turn. N (or Next) picks up the next unit you have not used; U (or Mine) rings your units in gold and the enemy's in red. Hover an enemy with a unit selected to see the damage forecast: what you will do, what you will take back, and why. Drag to pan, scroll to zoom.</p>
+    <p><b>Orders.</b> Click a unit, then click where it should go. Choose <i>Fire</i>, <i>Capture</i>, <i>Clear obstacles</i>, <i>Unload</i> or <i>Wait</i>. Right-click or Esc steps back. Arrow keys and Enter work too; E ends the turn, M toggles the minimap, V (or the Hide UI button) hides the interface to show the whole map, H asks your adviser for a suggested move. Click an enemy (or press R) to see what it can reach; press T, or the Danger button, to shade every tile any visible enemy could attack next turn. N (or Next) picks up the next unit you have not used; U (or Mine) rings your units in gold and the enemy's in red. Hover an enemy with a unit selected to see the damage forecast: what you will do, what you will take back, and why. Drag to pan, scroll to zoom. On a touch screen, pinch to zoom; tap an enemy once to see the odds and again to attack, and tap open ground once to see what it is.</p>
     <p><b>Terrain.</b> Stars are cover. Bocage hedgerows (3★) are miserable for tanks and wonderful for infantry. Bunkers give 4★, trenches 3★. Beaches, roads and marsh give none. Boats cannot pass beach obstacles; tanks crush wire but not hedgehogs. A unit that stops in a minefield loses 2–3 HP.</p>
     <p><b>Engineers.</b> Combat engineers blow lanes through obstacles, wire and minefields next to them, and their flamethrowers and charges are deadly against bunkers.</p>
     <p><b>Fixed defences.</b> MG 42 nests and 88 mm casemates never move. Hit them with artillery, naval gunfire, engineers and aircraft rather than walking into them.</p>
+    <p><b>Aircraft and ships.</b> Aircraft carry fuel for about a week aloft: end a turn on or beside one of your airfields, towns, ports or depots (forward landing grounds), or alongside your carrier, to refuel, or the aircraft is lost. A destroyer's, battleship's or carrier's main guns need two tiles' range, but their secondary guns, depth charges and flak take on a ship right alongside at half weight (depth charges on a U-boat hit full), and a ship alongside fires back. Destroyers can run in on a U-boat and depth-charge it in the same turn.</p>
     <p><b>Damage.</b> Units fight at strength: a unit with 5 HP hits half as hard. Direct-fire units take return fire; artillery, mortars and rockets never do but cannot move and fire in one turn.</p>
     <p><b>Veterans.</b> Units earn experience for damage, kills and captures: Veteran, Elite, then Legendary, each stronger. Ranked survivors of a victory join the core force and deploy in later missions.</p>
-    <p><b>Towns and depots.</b> Infantry capture (20 points; each HP is one point a turn). Each property pays 1,000 a day. Units resting on your property repair 2 HP.</p>
+    <p><b>Towns and depots.</b> Infantry capture (20 points; each HP is one point a turn). Each property pays 1,000 a turn. Units resting on your property repair 2 HP.</p>
     <p><b>Seeing what you can hit.</b> When you select a unit, blue shows where it can move and red shows everything it could fire on this turn. Enemies inside the red are outlined with the damage they would take, or KILL. Press R (or Y on a controller) over any unit to see its danger zone.</p>
     <p><b>Time.</b> Each turn is a slice of the real battle: an hour on Omaha, four hours at Pegasus Bridge, a day at Bastogne. Nights darken the map: aircraft are grounded and you see only what your units can see. Some missions have fog of war all the time.</p>
     <p><b>Digging in, weather and bridges.</b> Infantry and guns that hold position for a turn dig in for an extra star of cover. Snow slows vehicles off the roads; rain makes mud for wheels. Engineers can blow a bridge or build a Bailey bridge over a river for 3,000.</p>
@@ -277,10 +283,16 @@
     <button class="co right" id="co2"><span class="pt"></span><span class="cobody"><span class="nm"></span><span class="nat"></span><span class="fund"></span><span class="meter"></span><span class="pw"></span></span></button>
   </div>
   <canvas id="minimap" title="Minimap: click to move the view (M hides it)"></canvas>
+  <div id="viewbtns" role="toolbar" aria-label="View">
+    <button id="zoomin" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    <button id="zoomout" title="Zoom out (-)" aria-label="Zoom out">−</button>
+    <button id="maptoggle" class="on" title="Show or hide the minimap (M)" aria-pressed="true" aria-label="Minimap">▦ <span>Map</span></button>
+    <button id="hudtoggle" class="on" title="Show or hide the interface (V)" aria-pressed="false" aria-label="Hide the interface">◱ <span>Hide UI</span></button>
+  </div>
   <div id="bottom">
     <div id="tinfo"></div>
     <div id="uinfo" hidden></div>
-    <div class="acts"><button id="ffwd" hidden title="Speed up the enemy turn">»</button><button id="cop" hidden></button><button id="scop" hidden></button><button id="nextu" title="Pick up the next unit you have not used yet (Tab)">Next</button><button id="mine" title="Highlight your own units: gold rings on yours, red on the enemy's (U)" aria-pressed="false">Mine</button><button id="danger" title="Danger zone: show every tile the enemy can hit next turn (T)" aria-pressed="false">Danger</button><button id="endturn">End turn</button><button id="quit" class="ghost">Menu</button></div>
+    <div class="acts"><button id="ffwd" hidden title="Speed up the enemy turn" aria-label="Fast forward the enemy turn">Fast »</button><button id="cop" hidden></button><button id="scop" hidden></button><button id="nextu" title="Pick up the next unit you have not used yet (N)">Next</button><button id="mine" title="Highlight your own units: gold rings on yours, red on the enemy's (U)" aria-pressed="false">My units</button><button id="danger" title="Danger zone: show every tile the enemy can hit next turn (T)" aria-pressed="false">Danger</button><button id="endturn">End turn</button><button id="quit" class="ghost">Menu</button></div>
   </div>
   <div id="forecast" hidden></div>
 </section>

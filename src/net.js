@@ -99,14 +99,27 @@ async function openOnline() {
 }
 function renderGameList() {
   const el = $('#netgames'); if (!el) return; el.innerHTML = '';
-  const games = NET.games.filter(g => g.status !== 'over').sort((a, b) => b.updated - a.updated);
+  const seatOf = g => { const m = Object.entries(g.seats || {}).find(([, v]) => v === NET.uid); return m ? +m[0] : 0; }, due = g => g.status === 'playing' && g.turn === seatOf(g);
+  const games = NET.games.filter(g => g.status !== 'over').sort((a, b) => due(b) - due(a) || b.updated - a.updated);   // your move first, then the most recent
   if (!games.length) { el.innerHTML = '<p class="dim">No games in progress.</p>'; return; }
   for (const g of games) {
     const mine = Object.entries(g.seats || {}).find(([, v]) => v === NET.uid), seat = mine ? +mine[0] : 0, myTurn = g.turn === seat && g.status === 'playing';
     const b = document.createElement('button'); b.className = 'netgame' + (myTurn ? ' due' : '');
     b.innerHTML = `<b>${g.title}</b><small>Code ${g.code} · ${g.status === 'waiting' ? 'waiting for an opponent' : myTurn ? 'your move' : 'their move'} · ${g.clock || ''}</small>`;
-    b.onclick = () => resumeOnline(g.code); el.append(b);
+    b.onclick = () => resumeOnline(g.code);
+    const x = document.createElement('button'); x.className = 'netgame-x'; x.textContent = g.status === 'waiting' ? 'Cancel' : 'Resign';
+    x.title = g.status === 'waiting' ? 'Delete this game: nobody has joined yet' : 'Give up this game: your opponent wins';
+    x.onclick = () => netQuit(g, seat);
+    const row = document.createElement('div'); row.className = 'netrow'; row.append(b, x); el.append(row);
   }
+}
+async function netQuit(g, seat) {
+  const ref = NET.db.doc('games/' + g.code);
+  try {
+    if (g.status === 'waiting') { if (!confirm(`Cancel the game "${g.title}" (code ${g.code})?`)) return; await ref.delete(); }
+    else { if (!confirm(`Resign "${g.title}"? Your opponent will be given the win.`)) return; await ref.update({status:'over', resigned:seat, updated:Date.now()}); }
+    try { localStorage.removeItem('if44unsent:' + g.code); } catch (e) {}
+  } catch (e) { $('#netstatus').textContent = 'Could not do that: ' + (e.message || e.code); }
 }
 async function createOnline() {
   const st = $('#netstatus'), id = $('#netmission').value, seat = +$('#netseat').value;
@@ -144,8 +157,11 @@ async function joinOnline() {
 async function resumeOnline(code) {
   const snap = await NET.db.doc('games/' + code).get(); if (!snap.exists) return;
   const g = snap.data(), seat = +Object.entries(g.seats).find(([, v]) => v === NET.uid)[0];
-  revive(await unpackState(g.state)); G.teams[1].ai = G.teams[2].ai = false;
+  let unsent = null; try { unsent = JSON.parse(localStorage.getItem('if44unsent:' + code) || 'null'); } catch (e) {}
+  if (unsent && !(unsent.v === g.version + 1 && g.turn === seat && g.status === 'playing')) { try { localStorage.removeItem('if44unsent:' + code); } catch (e) {} unsent = null; }   // stale: the server already has it, or moved on
+  revive(await unpackState(unsent ? unsent.body.state : g.state)); G.teams[1].ai = G.teams[2].ai = false;
   G.online = {code, seat, version:g.version}; UI.overShown = false;
+  if (unsent) { watchGame(code); enterGame(); banner('Sending your last turn', 'It was finished on this device but never reached the server.', '#ffb060'); return netPushTurn(); }
   watchGame(code); enterGame(); netWaitOrPlay(g);
 }
 function watchGame(code) {
@@ -153,6 +169,7 @@ function watchGame(code) {
   NET.unsub = NET.db.doc('games/' + code).onSnapshot(async snap => {
     if (!snap.exists || !G || !G.online || G.online.code !== code) return;
     const g = snap.data();
+    if (g.status === 'over' && g.resigned && g.resigned !== G.online.seat && !G.over) { G.over = {winner:G.online.seat, why:'resign'}; $('#netwait').hidden = true; UI.busy = false; return gameOver(); }
     if (g.version > G.online.version) {                 // the opponent finished a turn
       const before = G, s = await unpackState(g.state);
       revive(s); G.teams[1].ai = G.teams[2].ai = false; G.online = {code, seat:before.online.seat, version:g.version};
@@ -164,15 +181,20 @@ function watchGame(code) {
 }
 /* the opponent's turn, replayed: units slide to their new places, losses burn */
 async function replayDiff(a, b) {
+  // fog and night: only what this side could see is replayed, so the replay cannot give away a hidden unit
+  const me = G.online ? G.online.seat : G.pbem ? G.pbem.seat : 0, fogged = me && (b.fog || isNight());
+  const visB = fogged ? computeVision(me) : null, cur = G; let visA = null; if (fogged) { G = a; try { visA = computeVision(me); } finally { G = cur; } }
+  const sees = (vis, x, y, u) => !vis || (vis[y * b.W + x] && !(u && u.d && u.d.sub && !u.revealed));
   const old = new Map(a.units.map(u => [u.id, u]));
   for (const u of b.units) {
     const o = old.get(u.id); if (!o) continue;
+    if (u.team !== me && !sees(visA, o.x, o.y, u) && !sees(visB, u.x, u.y, u)) continue;
     if (o.x !== u.x || o.y !== u.y) { focus(u.x, u.y); const path = [[o.x, o.y]]; let x = o.x, y = o.y; while (x !== u.x) { x += Math.sign(u.x - x); path.push([x, y]); } while (y !== u.y) { y += Math.sign(u.y - y); path.push([x, y]); }
       const tx = u.x, ty = u.y; u.x = o.x; u.y = o.y; await animateMove(u, path); u.x = tx; u.y = ty; }
     if (u.hp < o.hp) { fxExplosion(u.x, u.y, .7, {crater:false}); fxText(u.x, u.y, '-' + (Math.ceil(o.hp / 10) - Math.ceil(u.hp / 10))); await sleep(180); }
   }
   const alive = new Set(b.units.map(u => u.id));
-  for (const o of a.units) if (!alive.has(o.id)) { fxExplosion(o.x, o.y, 1.2); await sleep(200); }
+  for (const o of a.units) if (!alive.has(o.id) && (o.team === me || sees(visA, o.x, o.y, o))) { fxExplosion(o.x, o.y, 1.2); await sleep(200); }
   hud();
 }
 function netWaitOrPlay(g) {
@@ -189,6 +211,17 @@ async function netPushTurn() {
   const ref = NET.db.doc('games/' + G.online.code), v = G.online.version + 1;
   const body = {state:await packState(netSerial()), turn:G.turn, version:v, updated:Date.now(), clock:fmtClock(G.day, G.clock, true)};
   if (G.over) body.status = 'over';
-  try { await ref.update(body); G.online.version = v; G.online.begun = v; } catch (e) { G.online.pending = true; UI.busy = false; hud(); $('#endturn').disabled = false; banner('Not sent', 'The turn could not be saved online. Check your connection and press End turn to send it again.', '#ff8a6a'); return; }
+  const code = G.online.code, bk = 'if44unsent:' + code;
+  try { localStorage.setItem(bk, JSON.stringify({v, body})); } catch (e) {}           // a copy of the finished turn, until the server has it: a closed tab or a dead connection does not lose it
+  try {
+    const lease = await ref.acquire({holder:NET.uid, ttlMs:8000});                       // one writer at a time, then check nobody moved the game on (another tab, another device)
+    if (!lease.acquired) throw new Error('the game is busy');
+    const cur = (await ref.get()).data();
+    if (!cur) throw new Error('the game no longer exists');
+    if (cur.status === 'over' && cur.resigned) { try { localStorage.removeItem(bk); } catch (e) {} G.over = {winner:G.online.seat, why:'resign'}; return gameOver(); }
+    if (cur.version !== G.online.version) { try { localStorage.removeItem(bk); } catch (e) {} banner('Out of step', 'This game was moved on from another tab or device. Loading the latest turn.', '#ffb060'); return resumeOnline(code); }
+    await ref.update(body); G.online.version = v; G.online.begun = v; G.online.pending = false;
+    try { localStorage.removeItem(bk); } catch (e) {}
+  } catch (e) { G.online.pending = true; UI.busy = false; hud(); $('#endturn').disabled = false; banner('Not sent', 'The turn could not be saved online (' + (e.message || e.code || 'no connection') + '). It is kept on this device: press End turn to send it again.', '#ff8a6a'); return; }
   netWaitOrPlay();
 }

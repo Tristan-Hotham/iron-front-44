@@ -6,9 +6,23 @@
    runs, dive bombing, flamethrowers, satchel charges, naval gunfire.
    Hit figures fall (infantry) or brew up (vehicles). */
 const BW = 960, BH = 360;
-const BQ = 2;                                           // render quality: the scene is laid out on a 960×360 stage and drawn at twice that (1920×720), models painted at 4× map detail
+let BQ = 2;                                           // render quality: the scene is laid out on a 960×360 stage and drawn at twice that (1920×720), models painted at 4× map detail
 const BAT = {parts:[], shake:0};
-function bp(o) { o.t = 0; BAT.parts.push(o); }
+function battleQuality() {                            // draw at the screen's own resolution: a phone gets a third of the pixels to paint, a big monitor the full 2x
+  if (window.BQ_FORCE) return window.BQ_FORCE;
+  const px = Math.min(innerWidth, 1400) * (devicePixelRatio || 1);
+  return px >= 1800 ? 2 : px >= 1300 ? 1.5 : 1.25;
+}
+function bp(o) { if (BAT.parts.length > 1500 && !BP_KEEP.has(o.k)) return; o.t = 0; BAT.parts.push(o); }   // a cap: a long brew-up must not grind a phone to a halt
+const BP_KEEP = new Set(['turret', 'bailout', 'helmet']);
+const DARK = new WeakMap();
+function darkImg(img, b) {                           // the burnt-out look: darkened and browned, made once per sprite and shade
+  let m = DARK.get(img); if (!m) DARK.set(img, m = {}); if (m[b]) return m[b];
+  const c = mkCanvas(img.width, img.height), x = c.getContext('2d'); x.drawImage(img, 0, 0); x.globalCompositeOperation = 'source-atop';
+  x.fillStyle = `rgba(34,24,12,${(1 - b).toFixed(2)})`; x.fillRect(0, 0, c.width, c.height);
+  return (m[b] = c);
+}
+const WATER_TER = new Set(['sea', 'river', 'shallows', 'reef']);
 function drawBackdrop(g, X, ter, theme, weather, side) {
   const C = PAL[theme] || PAL.normandy, night = weather === 'night', winter = theme === 'winter';
   const sky = g.createLinearGradient(0, 0, 0, BH * .62);
@@ -24,8 +38,10 @@ function drawBackdrop(g, X, ter, theme, weather, side) {
   // far ridge and treeline
   g.fillStyle = shade(winter ? '#9aa6ae' : C.hill, -.25); g.beginPath(); g.moveTo(X, BH * .52);
   for (let x = 0; x <= BW / 2; x += 20) g.lineTo(X + x, BH * .48 - Math.sin((x + side * 70) * .02) * 18 - hrand(x, side) * 10); g.lineTo(X + BW / 2, BH * .6); g.lineTo(X, BH * .6); g.fill();
-  const water = ter === 'sea' || ter === 'river';
-  const ground = water ? C.sea : ter === 'beach' || ter === 'obst' || ter === 'shingle' ? C.sand : ter === 'ruins' || ter === 'block' ? '#7e7464' : ter === 'road' ? C.road : ter === 'field' ? C.wheat : ter === 'marsh' ? shade(C.grass, -.2) : C.grass;
+  const water = WATER_TER.has(ter), sand = C.sand || '#d8c08a';
+  const ground = water ? (ter === 'shallows' || ter === 'reef' ? shade(C.sea, .18) : C.sea) : ['beach', 'obst', 'shingle', 'dune', 'wadi'].includes(ter) ? sand : ter === 'loess' ? '#c8a878'
+    : ['mountain', 'escarp', 'cliff'].includes(ter) ? '#8a8476' : ter === 'ruins' || ter === 'block' || ter === 'antiq' ? '#7e7464' : ter === 'road' ? C.road : ter === 'field' ? C.wheat
+    : ter === 'marsh' || ter === 'paddy' ? shade(C.grass, -.2) : C.grass;
   g.fillStyle = shade(ground, -.12); g.fillRect(X, BH * .58, BW / 2, BH * .42);
   g.fillStyle = ground; g.fillRect(X, BH * .56, BW / 2, 16);
   for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(0,0,0,${.05 + hrand(i, side + 3) * .08})`; g.fillRect(X + hrand(i, 7 + side) * BW / 2, BH * .6 + hrand(i, 8) * BH * .38, 6 + hrand(i, 9) * 18, 2); }
@@ -45,6 +61,21 @@ function drawBackdrop(g, X, ter, theme, weather, side) {
     if (ter === 'ruins') { g.fillStyle = shade(C.road2, -.1); g.beginPath(); g.moveTo(bx, by + 30); g.lineTo(bx + bw * .7, by - 10); g.lineTo(bx + bw, by + 40); g.lineTo(bx + bw, by - 40); g.lineTo(bx, by - 40); g.fill(); }
   }
   if (ter === 'bunker') { g.fillStyle = '#8e8c84'; g.beginPath(); g.moveTo(X + 120, BH * .58); g.lineTo(X + 150, BH * .3); g.lineTo(X + 360, BH * .3); g.lineTo(X + 390, BH * .58); g.fill(); g.fillStyle = '#1c1c1a'; g.fillRect(X + 190, BH * .38, 130, 22); }
+  if (ter === 'jungle' || ter === 'palm') for (let i = 0; i < 7; i++) {             // palms and jungle: tall curved trunks, a crown of fronds
+    const tx = X + 20 + i * 72 + hrand(i, side) * 30, ty = BH * .57, h = 70 + hrand(i, side + 1) * 40;
+    g.strokeStyle = '#6a5438'; g.lineWidth = 6; g.beginPath(); g.moveTo(tx, ty); g.quadraticCurveTo(tx + 12, ty - h * .6, tx + 4, ty - h); g.stroke();
+    g.fillStyle = ter === 'jungle' ? '#2e5a2a' : '#4a7a3a'; for (let a = 0; a < 6; a++) { const ang = -Math.PI + a * Math.PI / 5; g.beginPath(); g.ellipse(tx + 4 + Math.cos(ang) * 22, ty - h + Math.sin(ang) * 8 + 6, 26, 7, ang, 0, 7); g.fill(); }
+    if (ter === 'jungle') { g.fillStyle = '#244a22'; g.beginPath(); g.arc(tx + 30, ty - 24, 26, 0, 7); g.fill(); } }
+  if (ter === 'olive') for (let i = 0; i < 6; i++) { const tx = X + 30 + i * 85 + hrand(i, side) * 20, ty = BH * .57;   // olive groves: low, grey-green, gnarled
+    g.fillStyle = '#5a4a36'; g.fillRect(tx - 3, ty - 26, 6, 26); g.fillStyle = '#7a8a62'; g.beginPath(); g.arc(tx, ty - 36, 24, 0, 7); g.fill(); g.fillStyle = '#8e9c76'; g.beginPath(); g.arc(tx - 9, ty - 42, 13, 0, 7); g.fill(); }
+  if (['mountain', 'escarp', 'cliff'].includes(ter)) { g.fillStyle = '#6e6a60';                // crags rising behind the fight
+    g.beginPath(); g.moveTo(X, BH * .58); for (let i = 0; i <= 6; i++) g.lineTo(X + i * BW / 12, BH * (.18 + hrand(i, side + 4) * .22)); g.lineTo(X + BW / 2, BH * .58); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.12)'; for (let i = 0; i < 6; i++) g.fillRect(X + i * BW / 12 + 10, BH * (.24 + hrand(i, side + 4) * .22), 18, 4); }
+  if (ter === 'dune' || ter === 'wadi') { g.fillStyle = shade(sand, -.08); for (let i = 0; i < 3; i++) { g.beginPath(); g.ellipse(X + 80 + i * 160, BH * .58, 120, 30, 0, Math.PI, 0); g.fill(); } }
+  if (ter === 'antiq') for (let i = 0; i < 5; i++) { const cx = X + 40 + i * 90, h = 60 + hrand(i, side) * 70;   // ancient columns, some broken off
+    g.fillStyle = '#d8d0b8'; g.fillRect(cx, BH * .56 - h, 22, h); g.fillStyle = '#c4baa0'; g.fillRect(cx - 4, BH * .56 - h - 6, 30, 6); for (let k = 1; k < 4; k++) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(cx + k * 5, BH * .56 - h, 2, h); } }
+  if (ter === 'paddy' || ter === 'shallows' || ter === 'reef') { g.fillStyle = 'rgba(200,225,235,.35)'; for (let i = 0; i < 14; i++) g.fillRect(X + hrand(i, 11) * BW / 2, BH * .6 + hrand(i, 12) * BH * .35, 40, 2); }
+  if (ter === 'reef') { g.fillStyle = 'rgba(230,220,190,.55)'; for (let i = 0; i < 9; i++) { g.beginPath(); g.ellipse(X + hrand(i, 13) * BW / 2, BH * .66 + hrand(i, 14) * BH * .28, 18, 5, 0, 0, 7); g.fill(); } }
   if (ter === 'obst' || ter === 'beach') { g.strokeStyle = '#3a3530'; g.lineWidth = 5; for (let i = 0; i < 5; i++) { const hx = X + 40 + i * 95, hy = BH * .5; g.beginPath(); g.moveTo(hx - 18, hy - 18); g.lineTo(hx + 18, hy + 18); g.moveTo(hx + 18, hy - 18); g.lineTo(hx - 18, hy + 18); g.stroke(); } }
   g.restore();
 }
@@ -56,10 +87,11 @@ function slotPos(i, n, side, air) {
 function battleScene(att, def, res, preAtt, preDef) {
   if (FAST || !SET.battle) return Promise.resolve();
   return new Promise(done => {
-    const wrap = $('#battlewrap'); wrap.hidden = false; bcv.width = BW * BQ; bcv.height = BH * BQ; BAT.parts = [];
+    const wrap = $('#battlewrap'); wrap.hidden = false; BQ = battleQuality(); bcv.width = BW * BQ; bcv.height = BH * BQ; BAT.parts = [];
     const counter = res.counter > 0 || res.cKilled; let dur = counter ? 4600 : 3000, skip = false;
     const t0 = BAT.t0 = performance.now();
-    const fin = () => { wrap.hidden = true; wrap.onclick = null; musicDuck(false); done(); };
+    let finished = false;
+    const fin = () => { if (finished) return; finished = true; wrap.hidden = true; wrap.onclick = null; if (BAT.t0 === t0) { BAT.t0 = -1; BAT.parts = []; } musicDuck(false); done(); };
     musicDuck(true);
     wrap.onclick = () => { skip = true; };
     const mk = (u, side, hp0, hp1) => {
@@ -68,6 +100,7 @@ function battleScene(att, def, res, preAtt, preDef) {
         figs:Array.from({length:n0}, (_, i) => ({i, alive:true, dieT:0, recoil:0, rnd:Math.random()}))};
     };
     const A = mk(att, 0, preAtt, att.hp), D = mk(def, 1, preDef, def.hp); A.foe = D; D.foe = A;
+    A.cls = torpedoVs(A.cls, att.d, def.d); D.cls = torpedoVs(D.cls, def.d, att.d);
     // which figures fall, and how: each man and each vehicle dies its own way, so no two in a group go down alike.
     // They fall when a round actually reaches them (fireVolley strikes them); the deadline only catches any the volley missed.
     const plan = (S, at, by) => { const lost = S.n0 - S.n1, order = S.figs.slice().sort((a, b) => a.rnd - b.rnd); let prev;
@@ -78,10 +111,12 @@ function battleScene(att, def, res, preAtt, preDef) {
     plan(D, 450 + hitA + 500, A.cls); if (counter) plan(A, cAt + hitD + 500, D.cls);
     dur = counter ? cAt + hitD + 1700 : 450 + hitA + 1700;
     if (D.n1 < D.n0 && !counter) dur += 700; if (counter && A.n1 < A.n0) dur += 900;     // time for the falls to finish and the wrecks to burn
+    if (D.u.d.sea && D.n1 < D.n0 || counter && A.u.d.sea && A.n1 < A.n0) dur += 1600;    // and for a ship to go under
     const bg = mkCanvas(BW * BQ, BH * BQ), bgg = bg.getContext('2d'); bgg.scale(BQ, BQ); drawBackdrop(bgg, 0, A.ter, G.theme, G.weather, 1); drawBackdrop(bgg, BW / 2, D.ter, G.theme, G.weather, 2);
     const fired = {a:false, c:false};
     let last = performance.now();
-    const step = () => {
+    setTimeout(fin, dur + 4000);                         // a watchdog: whatever happens, the close-up ends and the game goes on
+    const step = () => { if (finished) return; try {     // a drawing error closes the scene rather than freezing it
       const now = performance.now(), k = now - t0, dt = Math.min(.05, (now - last) / 1000); last = now;
       if (skip || k > dur) return fin();
       if (!fired.a && k > 450) { fired.a = true; fireVolley(A, D, 0); sayIn(A, 'atk'); }
@@ -99,8 +134,11 @@ function battleScene(att, def, res, preAtt, preDef) {
         g.drawImage(flagCanvas(S.nat, 30, 20), X + 10, 18, 30, 20);
         g.fillStyle = '#f4e8c8'; g.textAlign = 'left'; let fs = 17; g.font = `bold ${fs}px "Courier Prime",monospace`;
         while (g.measureText(S.u.d.n).width > 172 && fs > 11) { fs--; g.font = `bold ${fs}px "Courier Prime",monospace`; }
-        g.fillText(S.u.d.n, X + 50, 32);
-        g.fillStyle = '#b9b090'; g.font = '13px "Courier Prime",monospace'; g.fillText(S.u.name || '', X + 50, 50);
+        let nm = S.u.d.n; while (nm.length > 4 && g.measureText(nm).width > 172) nm = nm.slice(0, -2).trimEnd() + '…';   // still too long at the smallest size
+        g.fillText(nm, X + 50, 32);
+        g.fillStyle = '#b9b090'; g.font = '13px "Courier Prime",monospace';
+        let sub = S.u.name || '', room = rankOf(S.u) ? 172 : 236; while (sub.length > 4 && g.measureText(sub).width > room) sub = sub.slice(0, -2).trimEnd() + '…';   // clear of the rank label
+        g.fillText(sub, X + 50, 50);
         const shown = S.figs.some(f => f.dieAt != null && k > f.dieAt) ? S.hp1 : S.hp0;
         g.fillStyle = '#e8c040'; g.font = 'bold 20px "Courier Prime",monospace'; g.textAlign = 'right'; g.fillText('HP ' + Math.ceil(shown / 10), X + 290, 32);
         const r = rankOf(S.u); if (r) { g.fillStyle = '#e8c040'; g.font = '13px "Courier Prime",monospace'; g.fillText(RANKS[r].n.toUpperCase(), X + 290, 52); }
@@ -110,7 +148,7 @@ function battleScene(att, def, res, preAtt, preDef) {
       const lblAt = (S, est) => { const d = S.figs.filter(f => f.dieAt != null).map(f => f.dieAt); return d.length ? Math.min(...d) : est; };   // the damage shows as the first round lands
       dmgLbl(D, lblAt(D, 450 + hitA), res.dmg); if (counter) dmgLbl(A, lblAt(A, cAt + hitD), res.counter);
       setTimeout(step, 16);                                   // timer-driven so it also completes in a background tab
-    };
+    } catch (e) { console.error('battle scene', e); fin(); } };
     step();
   });
 }
@@ -179,7 +217,8 @@ function dieFig(S, f, now, frame, img) {
     else if (goreLevel() && (S.screams = (S.screams || 0) + 1) <= 3 && Math.random() < .85) sfx(Math.random() < .75 ? 'scream' : 'cry', Math.random() * .15);
     for (const m of (f.men || [{delay:0, death:f.death}]).slice(0, 2)) sfx('bodyfall', (m.delay + (LAND[m.death] || 520)) / 1000);
   } else if (!S.air && !S.u.d.sea && f.death !== 'boom') {
-    sfx(f.death);
+    const vd = S.vdeaths = (S.vdeaths || 0) + 1;            // a whole troop brewing up: the first two at full weight, two more under them, then silence
+    if (vd <= 4) { AU.scale = vd <= 2 ? 1 : .45; try { sfx(f.death, (vd - 1) * .06); } finally { AU.scale = 1; } }
     if (f.death === 'knockout') { bpExplode(c.x, c.y - 4, .8); bpSparks(c.x, c.y - 14, 20); bpSmoke(c.x, c.y - 20, 4, .6, 14); bail(2 + (Math.random() < .5), false); }
     else if (f.death === 'brewup') { bpExplode(c.x, c.y, 1.3); bpFire(c.x, c.y - 10, 30); bail(Math.random() < .6 ? 1 : 0, true); }
     else {                                              // cook-off: the turret goes up on a column of flame
@@ -189,7 +228,11 @@ function dieFig(S, f, now, frame, img) {
         x:p.x + size / 2, y:p.y + (cut.top + cut.cut) / 2 * sc, vx:away * rnd(20, 90), vy:-rnd(420, 560), g:900, floor:p.y + size * .86, spin:rnd(5, 9) * (Math.random() < .5 ? 1 : -1), rot:0, life:3});
       f.ring = {x:p.x + size / 2, y:p.y + cut.cut * sc};
     }
-  } else { bpExplode(c.x, c.y, 1.6); bpFire(c.x, c.y - 10, 20); sfx('boom'); if (!S.u.d.air && !S.u.d.sea) bail(2, true); }
+  } else if (S.u.d.sea) {                               // a ship: hit, burning; one in three goes up with her magazine. Then she lists and settles
+    f.list = Math.random() < .5 ? 1 : -1; bpExplode(c.x, c.y, 1.6); bpFire(c.x, c.y - 10, 20); sfx('boom');
+    if (Math.random() < .35) setTimeout(() => { bpExplode(c.x + rnd(-20, 20), c.y - 20, 2.6); bpColumn(c.x, c.y + 20, 1.3); BAT.shake = 22; boomAt(1.8); }, 500);   // the magazine
+    setTimeout(() => sfxNow('sinking'), 700);
+  } else { bpExplode(c.x, c.y, S.air ? 1.1 : 1.6); bpFire(c.x, c.y - 10, 20); sfx('boom'); if (!S.u.d.air) bail(2, true); }
 }
 function drawSide(g, S, k, now) {
   for (const f of S.figs.slice().sort((a, b) => (a.i >= 3 ? 0 : 1) - (b.i >= 3 ? 0 : 1))) {
@@ -198,7 +241,7 @@ function drawSide(g, S, k, now) {
     if (f.doomed && f.alive && f.dieAt == null && k > f.deadline) f.dieAt = k;     // a round the volley never landed on him: he goes down anyway
     const dead = f.dieAt != null && k > f.dieAt;
     if (!f.alive && f.deadFrame != null) frame = f.deadFrame;
-    const img = getSprite(S.nat, S.u.role, frame, false, G.theme === 'winter' ? 'w' : '', 2 * BQ);
+    let img = getSprite(S.nat, S.u.role, frame, false, G.theme === 'winter' ? 'w' : '', 2 * BQ);
     if (dead && f.alive) dieFig(S, f, now, frame, img);
     const rec = f.recoil || 0; f.recoil = f.recoil > 0 ? Math.max(0, f.recoil - 1.2) : Math.min(0, f.recoil + 1.4);   // negative recoil: a lunge forward
     g.save();
@@ -211,7 +254,7 @@ function drawSide(g, S, k, now) {
     }
     const e = dead ? now - f.deadT : 0, away = S.side ? 1 : -1;
     if (!S.air && !(dead && foot)) { g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + size / 2, y + size * .9, size * .38, size * .07, 0, 0, 7); g.fill(); }
-    let hull = false;
+    let hull = false, dim = 0;
     if (dead && foot && f.men) {                       // each man of the squad, drawn alone: standing a moment, then falling his own way
       const one = getSprite(S.nat, S.u.role, f.deadFrame, false, (G.theme === 'winter' ? 'w' : '') + '1', 2 * BQ), u = size / 32;
       for (const m of f.men) {
@@ -245,18 +288,31 @@ function drawSide(g, S, k, now) {
       g.translate(x + size / 2 + dx, y + piv + dy); g.rotate(ang); g.scale(sx, sy); g.translate(-size / 2, -piv); x = 0; y = 0;
     } else if (dead && ground && f.death !== 'boom') {
       const v = f.death;
-      g.filter = v === 'knockout' ? 'brightness(.55) sepia(.3)' : 'brightness(.28) sepia(.5)';
+      dim = v === 'knockout' ? .55 : .28;
       const cx = x + size / 2;
       if (v === 'knockout') { if (Math.random() < .2) bpSmoke(cx + rnd(-8, 8), y + size * .35, 1, .55, 10); }
       else if (v === 'brewup') { if (Math.random() < .55) bpFire(cx + rnd(-12, 12), y + size * .45, 2); if (Math.random() < .4) bpSmoke(cx + rnd(-10, 10), y + size * .3, 1, .95, 18); }
       else { hull = true; const r = f.ring;
         if (e < 2200) { for (let i = 0; i < 2; i++) bp({k:'fire', x:r.x + rnd(-6, 6), y:r.y, vx:rnd(-20, 20), vy:-rnd(160, 320), size:rnd(7, 13), life:rnd(.35, .6)}); if (Math.random() < .25) { bpSparks(r.x, r.y, 6); bpFlash(r.x + rnd(-10, 10), r.y - rnd(0, 20), 18); } }
         else { if (Math.random() < .45) bpFire(r.x, r.y, 2); if (Math.random() < .35) bpSmoke(r.x, r.y - 10, 1, .95, 18); } }
+    } else if (dead && S.air) {                         // shot down: she rolls over and goes in trailing smoke, then a splash or a fireball where she hits
+      const q = Math.min(1, e / 1150), gy = BH * .64, fallTo = gy - (p.y + size * .5);
+      dim = .45; y += q * q * fallTo; x += away * q * 80;
+      const cx = x + size / 2, cy = y + size / 2;
+      if (q < 1) { bp({k:'smoke', x:cx, y:cy, vx:0, vy:-8, size:6, grow:24, shade:.95, life:1.5}); if (Math.random() < .6) bpFire(cx, cy, 1); g.translate(cx, cy); g.rotate(away * q * 1.2); g.translate(-cx, -cy); }
+      else { g.globalAlpha = 0; if (!f.down) { f.down = true; if (WATER_TER.has(S.ter)) { bpColumn(cx, gy, .9); boomAt(1, {water:true, gain:.6}); } else { bpExplode(cx, gy, 1); boomAt(1, {gain:.6}); } } }
+    } else if (dead && S.u.d.sea) {                     // she lists, settles by the stern and goes under, still burning, until only foam is left
+      const q = Math.min(1, e / 3800), wl = p.y + size * .8, cx = x + size / 2;
+      dim = .5;
+      g.beginPath(); g.rect(0, 0, BW, wl); g.clip();     // nothing below the waterline shows
+      if (q < .8) { if (Math.random() < .5) bpFire(cx + rnd(-size * .3, size * .3), wl - size * .3 + q * size * .5, 1); if (Math.random() < .3) bpSmoke(cx + rnd(-20, 20), wl - size * .4, 1, .95, 18); }
+      if (Math.random() < .35) bp({k:'foam', x:cx + rnd(-size * .4, size * .4), y:wl, size:3, grow:16, life:1.2});
+      y += q * q * size * .75; g.translate(cx, wl); g.rotate(f.list * q * .2); g.translate(-cx, -wl);
     } else if (dead) {
-      const dk = Math.min(1, e / 500); g.filter = 'brightness(.3) sepia(.5)'; if (Math.random() < .25) bpSmoke(x + size / 2 + rnd(-10, 10), y + size * .4, 1, .8); if (Math.random() < .15) bpFire(x + size / 2, y + size * .5, 2);
-      if (S.air) { y += dk * 120; g.globalAlpha = 1 - dk; }
+      dim = .3; if (Math.random() < .25) bpSmoke(x + size / 2 + rnd(-10, 10), y + size * .4, 1, .8); if (Math.random() < .15) bpFire(x + size / 2, y + size * .5, 2);
     }
     if (S.side) { g.translate(x + size, y); g.scale(-1, 1); x = 0; y = 0; }
+    if (dim) img = darkImg(img, dim);                  // a pre-darkened copy: canvas filters every frame were the slowest thing on a phone
     if (hull) { const c = turretCut(img), sc = size / img.height; g.drawImage(img, 0, c.cut, img.width, img.height - c.cut, x, y + c.cut * sc, size, (img.height - c.cut) * sc); }   // the hull, its turret gone
     else g.drawImage(img, x, y, size, size);
     g.restore();
@@ -265,7 +321,7 @@ function drawSide(g, S, k, now) {
 /* ---------- volleys ---------- */
 function muzzleOf(S, f) { const p = slotPos(f.i, S.n0, S.side, S.air), dir = S.side ? -1 : 1; return {x:p.x + (S.side ? 6 : 58) * p.s, y:p.y + (S.u.d.foot ? 30 : 22) * p.s, dir, s:p.s}; }
 /* when the first rounds of each kind of volley reach the target (ms after the volley starts) */
-const IMPACT_MS = {smallarms:500, maul:400, bile:900, rocketAT:600, atrifle:300, flamer:700, charge:800, cannon:450, artillery:1500, naval:1600, mortar:1250, salvo:1400, flak:600, strafe:700, dive:1400, bombs:1400, rockets:700};
+const IMPACT_MS = {smallarms:500, maul:400, bile:900, rocketAT:600, atrifle:300, flamer:700, charge:800, cannon:450, artillery:1500, naval:1600, mortar:1250, salvo:1400, flak:600, strafe:700, dive:1400, bombs:1400, rockets:700, torpedo:1500, depth:1500};
 /* Every sound here is triggered by the picture: the report at each muzzle flash, the whistle while the shell falls,
    the detonation as it lands, and the man or tank it was meant for goes down with it. */
 function fireVolley(S, T, delay) {
@@ -273,13 +329,16 @@ function fireVolley(S, T, delay) {
   const pick = () => targets[Math.floor(Math.random() * targets.length)];
   const aim = () => { const d = targets.find(f => f.doomed && f.alive && f.dieAt == null && !f.aimed); if (d) { d.aimed = true; return d; } return pick(); };   // shells go to the men they will kill
   const hitPt = f => figPoint(T, f);
-  const later = (ms, fn) => setTimeout(fn, ms + delay);
+  const gen = BAT.t0, later = (ms, fn) => setTimeout(() => { if (BAT.t0 === gen) fn(); }, ms + delay);   // a skipped or finished scene's volleys never land in the next one
   const strike = (tf, p = 1) => { if (tf && tf.doomed && tf.alive && tf.dieAt == null && Math.random() < p) tf.dieAt = performance.now() - BAT.t0; };
   const near = tf => targets.find(o => o !== tf && Math.abs(o.i - tf.i) === 1);
-  const cls = S.cls, snd = S.u.d.snd, armour = !T.air && (T.u.d.mt === 'tread' || T.u.d.sea), vol = Math.min(1, 1.3 / Math.sqrt(n));
+  const cls = S.cls, snd = S.u.d.snd, armour = !T.air && (T.u.d.mt === 'tread' || T.u.d.armour || T.u.d.mt === 'amphib' || T.u.d.sea), vol = Math.min(1, 1.3 / Math.sqrt(n)), ship = !!T.u.d.sea;
+  const straddle = tf => ship && !tf.doomed && Math.random() < .75;          // at sea most rounds that don't hit throw up a column of water beside her
+  const waterline = h => h.y + 16;
   let booms = 0; const boom = size => { const b = booms++; if (b < 6) boomAt(size, {gain:b < 2 ? 1 : .6}); };   // a whole battery landing: the first few loud, the rest under them
   let whistles = 0;
-  if (['smallarms', 'flak', 'strafe', 'flamer'].includes(cls)) later(0, () => shot(snd));     // one long burst for the squad, starting with the first flash
+  if (S.air) later(0, () => airPass(S.u.d, .5));          // the aircraft's own engines: a Merlin, a radial, a biplane's clatter, a bomber's drone
+  if (['smallarms', 'flak', 'strafe', 'flamer'].includes(cls)) later(0, () => shot(snd, {max:cls === 'flamer' ? 0 : (n * 70 + (cls === 'strafe' ? 1300 : 1000)) / 1000}));     // one long burst for the squad, starting with the first flash
   else if (cls === 'maul' || cls === 'bile') later(0, () => sfx(snd));
   shooters.forEach((f, idx) => {
     const m = muzzleOf(S, f), stg = idx * 70;
@@ -307,20 +366,42 @@ function fireVolley(S, T, delay) {
         bp({k:'shellUp', x:m.x, y:m.y - 14, vx:m.dir * 260, vy:-700, life:.6});
         const tf = aim(), h = hitPt(tf), fall = (h.y + 20) / 900;                 // the shell comes down at 900 px/s from just above the frame
         if (whistles++ < 2) setTimeout(() => incomingTo(.55 + fall, {gain:vol}), 350);
-        setTimeout(() => bp({k:'shellDown', x:h.x + rnd(-30, 30), y:-20, ty:h.y, vx:0, vy:900, life:1.2, done:() => { bpExplode(h.x + rnd(-20, 20), h.y + 10, cls === 'naval' ? 2 : 1.5); boom(cls === 'naval' ? 1.6 : 1.3); strike(tf); strike(near(tf), .4); }}), 900); }); break;
+        const miss = straddle(tf), sx = h.x + (miss ? rnd(40, 80) * (Math.random() < .5 ? -1 : 1) : rnd(-30, 30));
+        setTimeout(() => bp({k:'shellDown', x:sx, y:-20, ty:miss ? waterline(h) : h.y, vx:0, vy:900, life:1.2, done:() => {
+          if (miss) { bpColumn(sx, waterline(h), cls === 'naval' ? 1.3 : 1); if (booms++ < 4) boomAt(1.2, {water:true, gain:.7}); return; }
+          bpExplode(h.x + rnd(-20, 20), h.y + 10, cls === 'naval' ? 2 : 1.5); boom(cls === 'naval' ? 1.6 : 1.3); strike(tf); strike(near(tf), .4); }}), 900); }); break;
       case 'mortar': later(stg * 2, () => { shot(snd, {gain:vol}); bpFlash(m.x - m.dir * 20, m.y - 30, 14); const tf = aim(), h = hitPt(tf);
         if (whistles++ < 2) setTimeout(() => incomingTo(.6, {f0:1500, f1:700, gain:vol}), 300);
         bpArc(m.x - m.dir * 20, m.y - 30, h.x, h.y, 900, 260, 'mortar', () => { bpExplode(h.x, h.y, 1); boom(.9); strike(tf); }); }); break;
-      case 'salvo': for (let i = 0; i < 6; i++) later(stg + i * 120, () => { if (idx < 2) launch({gain:vol * .9}); bpFlash(m.x, m.y - 10, 16); bpSmoke(m.x - m.dir * 30, m.y, 3, .25, 20); const tf = i < 2 ? aim() : pick(), h = hitPt(tf);
+      case 'salvo': for (let i = 0; i < 6; i++) later(stg + i * 120, () => { if (idx === 0 && i === 0) shot(snd, {gain:vol}); else if (idx < 2) launch({gain:vol * .9});   // the launcher's own voice: the Nebelwerfer's moan, the Katyusha's ripple bpFlash(m.x, m.y - 10, 16); bpSmoke(m.x - m.dir * 30, m.y, 3, .25, 20); const tf = i < 2 ? aim() : pick(), h = hitPt(tf);
         bpRocket(m.x, m.y - 10, h.x + rnd(-30, 30), h.y, 1000, () => { bpExplode(h.x + rnd(-20, 20), h.y, 1.1); boom(1); strike(tf, i < 2 ? 1 : .3); }, 220); }); break;
       case 'flak': for (let i = 0; i < 10; i++) later(stg + i * 90, () => { bpFlash(m.x, m.y - 14, 12); const tf = pick(), h = hitPt(tf);
         if (T.air) { bpTracer(m.x, m.y - 14, h.x + rnd(-40, 40), h.y + rnd(-30, 30), 2); setTimeout(() => { bp({k:'puff', x:h.x + rnd(-40, 40), y:h.y + rnd(-30, 30), size:6, grow:26, life:1.1}); strike(tf, .25); }, 160); }
         else { bpTracer(m.x, m.y - 14, h.x + rnd(-20, 20), h.y, 2); bpDust(h.x + rnd(-20, 20), h.y + 24, 1); strike(tf, .15); } }); break;
-      case 'strafe': later(stg, () => { for (let i = 0; i < 16; i++) setTimeout(() => { bpFlash(m.x, m.y, 10); const tx = BW / 2 + 40 + i * 26 + rnd(-6, 6); bpTracer(m.x, m.y, tx, BH * .7 + rnd(-10, 30), 2);
+      case 'strafe': later(stg, () => { for (let i = 0; i < 16; i++) setTimeout(() => { if (BAT.t0 !== gen) return; bpFlash(m.x, m.y, 10);
+        if (T.air) { const tf = pick(), h = hitPt(tf); bpTracer(m.x, m.y, h.x + rnd(-30, 30), h.y + rnd(-20, 20), 2);   // a dogfight: bursts at the other aircraft, not the ground beneath them
+          setTimeout(() => { bp({k:'puff', x:h.x + rnd(-24, 24), y:h.y + rnd(-16, 16), size:3, grow:10, life:.5}); strike(tf, .3); }, 100); return; }
+        const tx = (T.side ? BW / 2 + 40 : 40) + i * 26 + rnd(-6, 6); bpTracer(m.x, m.y, tx, BH * .7 + rnd(-10, 30), 2);   // the gun run walks across the target's half of the field
         setTimeout(() => { bpDust(tx, BH * .72 + rnd(0, 30), 1); const tf = targets.find(o => Math.abs(hitPt(o).x - tx) < 40); if (tf) strike(tf, .4); }, 100); }, i * 45); }); break;
       case 'dive': case 'bombs': later(stg * 2, () => { shot(snd, {gain:vol}); const tf = aim(), h = hitPt(tf), dy = Math.max(10, h.y - m.y), fall = (-120 + Math.sqrt(14400 + 1800 * dy)) / 900;
         if (whistles++ < 2) incomingTo(fall + .15, {f0:1700, f1:500, gain:vol});
-        bp({k:'bomb', x:m.x, y:m.y + 20, vx:(h.x - m.x) * 1.2, vy:120, g:900, ty:h.y + 20, life:1.2, done:() => { bpExplode(h.x, h.y + 10, 2); boom(1.5); strike(tf); strike(near(tf), .5); }}); }); break;
+        const miss = straddle(tf), off = miss ? rnd(45, 85) * (Math.random() < .5 ? -1 : 1) : 0;
+        bp({k:'bomb', x:m.x, y:m.y + 20, vx:(h.x + off - m.x) * 1.2, vy:120, g:900, ty:miss ? waterline(h) : h.y + 20, life:1.2, done:() => {
+          if (miss) { bpColumn(h.x + off, waterline(h), 1.1); if (booms++ < 4) boomAt(1.3, {water:true, gain:.8}); return; }
+          bpExplode(h.x, h.y + 10, 2); boom(1.5); if (ship) bpColumn(h.x + rnd(-20, 20), waterline(h), .7); strike(tf); strike(near(tf), .5); }}); }); break;
+      case 'depth': later(stg * 3, () => {                  // depth charges: thrown or rolled off the stern (or dropped), a splash, a pause as they sink, then the sea heaves up
+        const tf = aim(), h = hitPt(tf), wy = waterline(h), dx = h.x + rnd(-40, 40);
+        if (S.air) shot(snd, {gain:vol * .5});
+        bpArc(m.x, m.y - 10, dx, wy, 650, S.air ? 20 : 120, 'satchel', () => { bpSplash(dx, wy, .5); if (idx < 2) sfxNow('splash');
+          setTimeout(() => { bpColumn(dx, wy, 1.3); BAT.shake = 10; if (booms++ < 4) { boomAt(1.3, {water:true}); if (booms < 3) sfxNow('depthcharge'); } strike(tf); strike(near(tf), .3); }, 700); }); }); break;
+      case 'torpedo': later(stg * 3, () => {                // a run in low over the water, the drop, the splash, the wake running in, then the column of water against her side
+        const tf = aim(), h = hitPt(tf), wy = waterline(h), hit = !tf.doomed && Math.random() < .5 ? null : tf;   // some run deep or wide
+        const run = x0 => (idx < 2 && sfxNow('torprun'), bp({k:'torp', x:x0, y:wy, vx:(h.x - x0) / .85, vy:0, tx:h.x + (hit ? 0 : -m.dir * 10), life:1.6, done:() => {
+          if (!hit) { bp({k:'torp', x:h.x, y:wy + 6, vx:(h.x - x0) / .85, vy:0, tx:h.x > x0 ? BW + 99 : -99, life:.8}); return; }   // under the keel and away
+          bpColumn(h.x, wy, 1.6); bpExplode(h.x, h.y + 4, 1.1); BAT.shake = 12; if (booms++ < 3) { boomAt(1.4, {water:true}); sfxNow('torpedo'); } strike(tf); }}));
+        if (S.air) { shot(snd, {gain:vol * .6}); const y0 = m.y + 22, tFall = (-60 + Math.sqrt(3600 + 1400 * Math.max(10, wy - y0))) / 700, x1 = m.x + m.dir * 170 * tFall;
+          bp({k:'bomb', x:m.x, y:y0, vx:m.dir * 170, vy:60, g:700, ty:wy, life:1.4, torp:1, done:() => { bpSplash(x1, wy); if (idx < 2) sfxNow('splash'); run(x1); }}); }
+        else { bp({k:'foam', x:m.x, y:wy, size:8, grow:30, life:.9}); bpSplash(m.x, wy, .4); run(m.x); } }); break;   // a submarine: the bubble of the launch, then the track
       case 'rockets': for (let i = 0; i < 4; i++) later(stg + i * 100, () => { if (idx < 2) launch({gain:vol}); bpFlash(m.x, m.y + 10, 12); const tf = i ? pick() : aim(), h = hitPt(tf);
         bpRocket(m.x, m.y + 10, h.x + rnd(-20, 20), h.y, 380, () => { bpExplode(h.x, h.y, 1.2); boom(.9); strike(tf, i ? .3 : 1); }); }); break;
     }
@@ -339,6 +420,17 @@ function bpExplode(x, y, s = 1) {
   bp({k:'flash', x, y, size:60 * s, life:.16}); bpFire(x, y, 16 * s); bpSmoke(x, y - 10, 7 * s, .7, 22 * s);
   for (let i = 0; i < 16 * s; i++) bp({k:'debris', x, y, vx:rnd(-240, 240), vy:-rnd(120, 420), g:900, size:rnd(2, 5), life:rnd(.6, 1.1)});
   bpSparks(x, y, 10 * s); bp({k:'ring', x, y:y + 30, size:10, grow:120 * s, life:.5}); BAT.shake = Math.max(BAT.shake, 9 * s);
+}
+/* water: a tower of white water from a torpedo, a near miss or a shell short; a splash from something going in */
+function bpColumn(x, y, s = 1) {
+  bp({k:'column', x, y, h:Math.min(170, 110 * s), w:34 * s, life:1.9});   // kept under the name panels
+  for (let i = 0; i < 26 * s; i++) bp({k:'spray', x:x + rnd(-10, 10) * s, y:y - rnd(0, 60) * s, vx:rnd(-150, 150), vy:-rnd(160, 520) * s, g:900, size:rnd(1.5, 3.5), life:rnd(.9, 1.5)});
+  bp({k:'foam', x, y, size:12 * s, grow:70 * s, life:1.6}); BAT.shake = Math.max(BAT.shake, 7 * s);
+}
+function bpSplash(x, y, s = 1) {
+  bp({k:'column', x, y, h:46 * s, w:16 * s, life:.9});
+  for (let i = 0; i < 10; i++) bp({k:'spray', x, y, vx:rnd(-90, 90), vy:-rnd(80, 260), g:900, size:rnd(1.5, 3), life:rnd(.5, .9)});
+  bp({k:'foam', x, y, size:6, grow:26, life:1});
 }
 function bpRocket(x1, y1, x2, y2, ms, done, arc = 0) { bp({k:'rocket', x1, y1, x2, y2, arc, life:ms / 1000, done}); }
 function bpArc(x1, y1, x2, y2, ms, arc, style, done) { bp({k:'arcp', x1, y1, x2, y2, arc, style, life:ms / 1000, done}); }
@@ -363,7 +455,9 @@ function updateBattleParts(g, dt) {
       case 'ring': g.strokeStyle = `rgba(220,200,160,${(1 - k) * .7})`; g.lineWidth = 3; g.beginPath(); g.ellipse(p.x, p.y, p.size + p.grow * k, (p.size + p.grow * k) * .3, 0, 0, 7); g.stroke(); break;
       case 'rocket': case 'arcp': {
         const x = p.x1 + (p.x2 - p.x1) * k, y = p.y1 + (p.y2 - p.y1) * k - Math.sin(k * Math.PI) * (p.arc || 0);
-        if (p.k === 'rocket') { bp({k:'smoke', x, y, vx:0, vy:-6, size:4, grow:14, shade:.15, life:.8}); g.fillStyle = '#ffe0a0'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
+        if (p.k === 'rocket') { bp({k:'smoke', x, y, vx:0, vy:-6, size:4, grow:14, shade:.15, life:.8});
+          const k2 = Math.min(1, k + .02), x2 = p.x1 + (p.x2 - p.x1) * k2, y2 = p.y1 + (p.y2 - p.y1) * k2 - Math.sin(k2 * Math.PI) * (p.arc || 0);
+          drawRocket(g, x, y, Math.atan2(y2 - y, x2 - x), 2.4); }
         else if (p.style === 'bile') { g.fillStyle = '#a8d040'; g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); bp({k:'goo', x, y, vx:0, vy:30, g:200, size:2, life:.4}); }
         else { g.fillStyle = p.style === 'satchel' ? '#6a5a3a' : '#2a2a26'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
         if (k > .96 && p.done) { const d = p.done; p.done = null; d(); }
@@ -381,10 +475,24 @@ function updateBattleParts(g, dt) {
         g.save(); g.translate(p.x, p.y); g.rotate(p.rot); g.globalAlpha = a;
         if (p.k === 'brass') { g.fillStyle = '#d0a848'; g.fillRect(-2 * p.s, -.8 * p.s, 4 * p.s, 1.6 * p.s); g.restore(); break; }
         if (p.k === 'gib') { const w = p.w * p.s, h = p.h * p.s; g.fillStyle = p.col; g.fillRect(-w / 2, -h / 2, w, h); g.fillStyle = p.end; g.fillRect(-w / 2, h / 2 - Math.min(h * .3, 4 * p.s), w, Math.min(h * .3, 4 * p.s)); g.fillStyle = '#7a0c08'; g.fillRect(-w / 2, -h / 2, w, Math.max(1.5, h * .14)); g.restore(); break; }
-        if (p.k === 'turret') { if (Math.random() < .6 && k < .6) bp({k:'smoke', x:p.x, y:p.y, vx:0, vy:-10, size:5, grow:18, shade:.9, life:.9}); if (p.flip) g.scale(-1, 1); g.filter = 'brightness(.4) sepia(.4)'; g.drawImage(p.img, 0, p.sy, p.iw, p.sh, -p.dw / 2, -p.dh / 2, p.dw, p.dh); }
+        if (p.k === 'turret') { if (Math.random() < .6 && k < .6) bp({k:'smoke', x:p.x, y:p.y, vx:0, vy:-10, size:5, grow:18, shade:.9, life:.9}); if (p.flip) g.scale(-1, 1); g.drawImage(darkImg(p.img, .4), 0, p.sy, p.iw, p.sh, -p.dw / 2, -p.dh / 2, p.dw, p.dh); }
         else { g.fillStyle = '#4f5a3e'; g.beginPath(); g.ellipse(0, 0, 7 * p.s, 4.5 * p.s, 0, Math.PI, 0); g.fill(); g.fillRect(-8 * p.s, -.5, 16 * p.s, 2); }
         g.restore(); break; }
       case 'shellUp': g.fillStyle = '#2a2a26'; g.fillRect(p.x, p.y, 4, 6); break;
+      case 'torp': {                                   // the torpedo's track: a line of white water behind a running warhead
+        const d = Math.sign(p.vx) || 1; g.fillStyle = 'rgba(236,244,248,.8)';
+        for (let i = 0; i < 7; i++) g.fillRect(p.x - d * (i * 13 + 10), p.y + Math.sin(p.t * 30 + i) * 1.2 - 1, 11, 2.4 - i * .2);
+        g.fillStyle = '#1e2a2e'; g.fillRect(p.x - 5, p.y - 1, 10, 3);
+        if (Math.random() < .6) bp({k:'foam', x:p.x - d * 8, y:p.y, size:2, grow:9, life:1.2});
+        if ((d > 0 ? p.x >= p.tx : p.x <= p.tx) && p.done) { const f = p.done; p.done = null; f(); p.t = p.life; } break; }
+      case 'foam': { const r = p.size + p.grow * k; g.fillStyle = `rgba(232,242,247,${(1 - k) * .5})`; g.beginPath(); g.ellipse(p.x, p.y, r, r * .28, 0, 0, 7); g.fill(); break; }
+      case 'spray': g.fillStyle = `rgba(232,242,248,${1 - k * .8})`; g.beginPath(); g.arc(p.x, p.y, p.size, 0, 7); g.fill(); break;
+      case 'column': {                                 // up fast, hangs, then falls back as it spreads
+        const up = Math.min(1, k / .2), h = p.h * up * (1 - Math.max(0, (k - .5) / .5) * .85), w = p.w * (1 + k * 1.2), a = 1 - Math.max(0, (k - .4) / .6);
+        const gr = g.createLinearGradient(0, p.y - h, 0, p.y); gr.addColorStop(0, `rgba(246,250,252,${a * .55})`); gr.addColorStop(.6, `rgba(226,236,242,${a * .85})`); gr.addColorStop(1, `rgba(200,216,226,${a * .9})`);
+        g.fillStyle = gr; g.beginPath(); g.moveTo(p.x - w * .5, p.y); g.quadraticCurveTo(p.x - w * .3, p.y - h * .55, p.x - w * .22, p.y - h); g.quadraticCurveTo(p.x, p.y - h * 1.15, p.x + w * .22, p.y - h); g.quadraticCurveTo(p.x + w * .3, p.y - h * .55, p.x + w * .5, p.y); g.fill();
+        if (k > .3 && Math.random() < .5) bp({k:'spray', x:p.x + rnd(-w * .4, w * .4), y:p.y - h * rnd(.6, 1), vx:rnd(-60, 60), vy:rnd(-40, 40), g:700, size:rnd(1.5, 3), life:.6});
+        break; }
       case 'shellDown': { g.fillStyle = '#2a2a26'; g.fillRect(p.x - 2, p.y, 4, 8); g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath(); g.moveTo(p.x, p.y - 30); g.lineTo(p.x, p.y); g.stroke();
         if (p.y >= p.ty && p.done) { const d = p.done; p.done = null; d(); p.t = p.life; } break; }
       case 'bomb': { g.fillStyle = '#1e1e1a'; g.beginPath(); g.ellipse(p.x, p.y, 5, 9, Math.atan2(p.vy, p.vx) - Math.PI / 2, 0, 7); g.fill();

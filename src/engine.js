@@ -68,7 +68,7 @@ function newGame(cfg) {
     G.ter.push(d[0]);
     if (TER[d[0]].prop) G.props[K(x, y)] = {x, y, owner:d[1] || 0, cap:20};
   }
-  G.uover = {}; G.arrived = 0; G.waves = cfg.waves ? Object.assign({}, cfg.waves) : null; G.persona = cfg.persona || null; G.watch = !!cfg.watch;
+  G.uover = {}; G.arrived = 0; G.waves = cfg.waves ? Object.assign({}, cfg.waves) : null; G.persona = cfg.persona || null; G.watch = !!cfg.watch; G.edtest = !!cfg.edtest;
   G.diff = cfg.diff || (typeof SET !== 'undefined' && SET.difficulty) || 'normal';   // fixed for the whole game: changing the setting mid-battle does not change this one
   for (const t of [1, 2]) {
     const c = cfg.teams[t];
@@ -236,7 +236,9 @@ function canStop(u, x, y) {
   return !o || o === u || canCarry(o, u) || canJoin(u, o);
 }
 /* two understrength units of the same type merge; surplus strength comes back as funds */
-function canJoin(u, o) { return !!o && o !== u && o.team === u.team && o.role === u.role && !u.d.fixed && !o.cargo.length && !u.cargo.length && (u.hp < 100 || o.hp < 100); }
+function canJoin(u, o) {
+  const ob = G && G.objective, counted = ob && (u.role === ob.role || u.role === ob.protect || (ob.win === 'convoy' && u.role === 'merch'));   // the units a battle counts cannot merge: two carriers joined would lose a "keep three" battle
+  return !!o && o !== u && o.team === u.team && o.role === u.role && !u.d.fixed && !counted && !o.cargo.length && !u.cargo.length && (u.hp < 100 || o.hp < 100); }
 function joinUnits(u, o) {
   const total = u.hp + o.hp, refund = Math.max(0, total - 100) * u.d.cost / 100;
   o.hp = Math.min(100, total); o.xp = Math.max(o.xp || 0, u.xp || 0); o.kills = (o.kills || 0) + (u.kills || 0); o.done = true;
@@ -267,8 +269,9 @@ function calcDamage(att, def, attHp = att.hp, luck = 0, ax = att.x, ay = att.y, 
   const atk = (100 + sumGroup(att.team, 'atk', att.d, terr(ax, ay)) + (G.teams[att.team].power ? 10 : 0) + RANKS[rankOf(att)].atk + aiEdge(att.team)) / 100;
   const stars = def.d.air ? 0 : TER[terr(dx, dy)].def + (def.dug && def.x === dx && def.y === dy ? 1 : 0);   // foxholes add a star
   const dco = 100 + sumGroup(def.team, 'def', def.d, terr(dx, dy)) + (G.teams[def.team].power ? 10 : 0) + RANKS[rankOf(def)].def + aiEdge(def.team);
-  let dmg = (b * pow * atk + luck) * (Math.ceil(attHp / 10) / 10) * ((200 - (dco + stars * hpBars(def))) / 100) * def.d.arm;
+  let dmg = (b * pow * atk + luck) * (Math.ceil(attHp / 10) / 10) * Math.max(.25, (200 - (dco + stars * hpBars(def))) / 100) * def.d.arm;   // a floor: stacked powers, rank and an HQ's cover can never make a unit invulnerable
   if (inSmoke(dx, dy) && Math.abs(ax - dx) + Math.abs(ay - dy) > 1) dmg *= .5;        // firing blind into smoke
+  if (att.d.sea && att.d.indirect && !def.d.sub && Math.abs(ax - dx) + Math.abs(ay - dy) === 1) dmg *= .5;   // point-blank at sea is the secondary battery's work, not the main guns' (depth charges on a U-boat hit full)
   return clamp(Math.floor(dmg), 0, 100);
 }
 /* smoke from burning grass or a screen: halves fire into it from more than a tile away (event field smoke:[x0,y0,x1,y1,days]) */
@@ -276,11 +279,16 @@ function inSmoke(x, y) { return !!(G && G.smoke && G.smoke.some(s => G.day <= s.
 /* pinned down: on battles that use it, a squad cut to half strength in the open on the beach goes to ground and loses its next move */
 const PIN_GROUND = new Set(['beach', 'shallows', 'obst', 'shingle']);
 function pinCheck(u, before) { if (!G.mission || !G.mission.pin || !u.d.foot || u.hp <= 0 || before <= 50 || u.hp > 50 || !PIN_GROUND.has(terr(u.x, u.y))) return false; u.pinned = true; return true; }
-function inRange(u, x, y, o) { const [a, b] = rangeOf(u), r = Math.abs(o.x - x) + Math.abs(o.y - y); return r >= a && r <= b; }
+function inRange(u, x, y, o) { const [a, b] = rangeOf(u), r = Math.abs(o.x - x) + Math.abs(o.y - y);
+  if (o.d && o.d.sub && u.d.sea && u.d.indirect && !u.d.carrier && r > 1) return false;   // naval guns cannot reach a submerged boat: that is depth-charge work, alongside
+  return r >= a && r <= b || closeShot(u, o, r); }
+/* point-blank at sea: a destroyer's, battleship's or carrier's secondary guns, depth charges and flak take on a ship alongside,
+   though the main battery needs two tiles; a destroyer can run in on a U-boat and depth-charge it on the move */
+function closeShot(u, o, r = dist(u, o)) { return r === 1 && !!(u.d.sea && u.d.indirect && o && o.d && o.d.sea); }
 function targetsFrom(u, x, y, moved) {
   const [, b] = rangeOf(u); if (!b) return [];
   if ((u.d.air || u.d.carrier) && airGrounded()) return [];  // no air strikes in the dark
-  if (u.d.indirect && moved) return [];
+  if (u.d.indirect && moved) return u.role === 'dd' ? G.units.filter(o => o.team !== u.team && o.d.sub && canHit(u, o) && closeShot(u, o, Math.abs(o.x - x) + Math.abs(o.y - y)) && !subHidden(o, u.team, x, y, u)) : [];
   return G.units.filter(o => o.team !== u.team && canHit(u, o) && inRange(u, x, y, o) && !subHidden(o, u.team, x, y, u));
 }
 /* a submerged U-boat is invisible unless an escort's asdic (2 tiles), a patrol plane overhead or any
@@ -295,7 +303,8 @@ function subHidden(o, viewer, ax, ay, att) {
   return true;
 }
 function luckRoll() { return Math.floor(Math.random() * 10); }
-const canCounter = (def, att) => !def.d.indirect && !att.d.indirect && dist(att, def) === 1 && canHit(def, att);
+const canCounter = (def, att) => (!def.d.indirect || closeShot(def, att)) && (!att.d.indirect || closeShot(att, def)) && dist(att, def) === 1 && canHit(def, att)
+  && rangeOf(def)[1] >= 1 && !((def.d.air || def.d.carrier) && airGrounded());   // a unit that cannot attack cannot fire back; nor can aircraft grounded by night
 /* resolves an attack; returns {dmg, counter, killed, cKilled, promo} */
 function attack(att, def, rnd = luckRoll) {
   const dmg = calcDamage(att, def, att.hp, rnd()), defBefore = def.hp, attBefore = att.hp;
@@ -376,9 +385,10 @@ function refreshAgain(u) {
 }
 
 /* ---------- capture and engineering ---------- */
-function canCapture(u, x, y) { const p = propAt(x, y); return !!(u.d.cap && p && p.owner !== u.team); }
+const capKey = () => G.day + ':' + G.turn;
+function canCapture(u, x, y) { const p = propAt(x, y); return !!(u.d.cap && p && p.owner !== u.team && p.capTurn !== capKey()); }   // once per building per turn: a second action from a power cannot finish an HQ in one go
 function capture(u) {
-  const p = propAt(u.x, u.y); p.cap -= hpBars(u) * (u.d.capMul || 1);
+  const p = propAt(u.x, u.y); p.cap -= hpBars(u) * (u.d.capMul || 1); p.capBy = u.id; p.capTurn = capKey();
   if (p.cap <= 0) {
     const prev = p.owner; p.owner = u.team; p.cap = 20; gainXp(u, 15);
     if (terr(p.x, p.y) === 'hq' && prev) endGame(u.team, 'hq');
@@ -442,18 +452,34 @@ function repairs(team) {
   }
   return out;
 }
+/* aircraft fuel: a sortie lasts a few days away from an airfield or a carrier; land (or come alongside your carrier) to refuel, or the aircraft is lost.
+   Only for a side that has somewhere to land: paratroop transports and the bombers of a scripted raid fly on regardless */
+const FUEL_DAYS = {ftr:7, tb:7, bmr:8};
+function fuelMax(u) { return FUEL_DAYS[u.role] || 5; }
+const AIR_FIELDS = new Set(['air', 'city', 'hq', 'port', 'fact']);   // airfields, and the forward landing grounds and fuel dumps by any town, port or depot you hold
+function airBase(u, x = u.x, y = u.y, team = u.team) {             // on or beside one of them, or alongside your carrier
+  for (const p of Object.values(G.props)) if (p.owner === team && AIR_FIELDS.has(terr(p.x, p.y)) && Math.abs(p.x - x) + Math.abs(p.y - y) <= 1) return true;
+  return G.units.some(o => o.team === team && o.d.carrier && Math.abs(o.x - x) + Math.abs(o.y - y) <= 1); }
+function hasAirBase(team) { if (G.mission && G.mission.airFree && G.mission.airFree.includes(team)) return false;   // a battle can say a side's aircraft are supplied from off the map
+  return Object.values(G.props).some(p => p.owner === team && terr(p.x, p.y) === 'air') || G.units.some(o => o.team === team && o.d.carrier); }
+function usesFuel(u) { return !!(u.d.air && !u.d.fixed && hasAirBase(u.team)); }
 function startTurn(team) {
   G.turn = team; const T = G.teams[team];
   T.power = 0;
+  for (const p of Object.values(G.props)) if (p.cap < 20 && p.capBy != null) { const o = unitAt(p.x, p.y); if (!o || o.id !== p.capBy) { p.cap = 20; p.capBy = null; } }   // a capture half-done is lost when the capturer leaves or falls
   const pinned = [];
   for (const u of G.units) if (u.team === team) { u.moved = false; u.done = false; u.again = false; u.sx = u.x; u.sy = u.y; u.revealed = false;
     if (u.pinned) { u.pinned = false; u.done = u.moved = true; pinned.push(u); } }                  // pinned down: this turn they stay in the sand
-  const gone = G.units.filter(u => u.team === team && u.d.carry && u.d.sea && u.landed && !u.cargo.length);   // empty landing craft go back to the fleet
+  const ditched = [];
+  if (hasAirBase(team) && !airGrounded()) for (const u of G.units) if (u.team === team && u.d.air && !u.d.fixed) {
+    if (u.fuel == null || airBase(u)) u.fuel = fuelMax(u); else if (--u.fuel <= 0) ditched.push(u); }
+  if (ditched.length) { G.units = G.units.filter(u => !ditched.includes(u)); G.stats[team].lost += ditched.length; }
+  const gone = G.units.filter(u => u.team === team && u.d.carry && u.d.sea && u.landed && !u.cargo.length && !u.bought);   // the assault wave's empty craft go back to the fleet; boats you bought stay to ferry the next lift
   if (gone.length) G.units = G.units.filter(u => !gone.includes(u));
   T.funds += income(team);
   if (G.waves && team === 2 && typeof waveTick === 'function') waveTick();
   G.wrecks = G.wrecks.filter(w => G.day - w.day < 4);
-  return {rep:repairs(team), pinned};
+  return {rep:repairs(team), pinned, ditched};
 }
 function endTurn() {
   const next = enemyOf(G.turn);
@@ -493,7 +519,7 @@ function checkEnd() {
   if (G.over) return G.over.winner;
   for (const t of [1, 2]) {
     const mobile = G.units.some(u => u.team === t && !u.d.fixed);
-    const any = G.units.some(u => u.team === t);
+    const any = G.units.some(u => u.team === t && !(G.waves && G.waves.zed && u.d.air));   // in Dead of Night the dead cannot reach aircraft: lose every man on the ground and you are overrun
     if ((!any || (!mobile && t === 2 && G.objective.win !== 'survive' && false)) && (G.day > 1 || G.turn !== t) && !(G.waves && t === 2)) { endGame(enemyOf(t), 'rout'); return G.over.winner; }
   }
   const o = G.objective;
