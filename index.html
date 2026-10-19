@@ -3372,6 +3372,11 @@ const WEAPON = {
     whistle(t + 1.6, .7, 1500, 600); explosion(t + 2.3, 1.4); },
   bombs(t) { engine(t, 1.8, {f:70, gain:.13, lp:700, ramp:1.3}); whistle(t + .6, 1, 1700, 500); explosion(t + 1.6, 1.3); explosion(t + 1.8, 1); },
   rp3(t) { engine(t, 1.4, {f:95, gain:.1, lp:900, ramp:1.3}); for (let i = 0; i < 4; i++) whoosh(t + .5 + i * .12, .5, 500, 2500, .4); for (let i = 0; i < 4; i++) explosion(t + 1 + i * .14, .7); },
+  molotov(t) {                                                   // a bottle smashing on steel, then the petrol going up with a whoomp, and crackling
+    for (let i = 0; i < 6; i++) noiseHit(t + i * .018 + Math.random() * .01, {dur:.05 + Math.random() * .06, hp:3500 + Math.random() * 3000, gain:.35});
+    tone(t + .01, {f:3200, f1:2400, dur:.12, gain:.05, type:'triangle'});
+    whoosh(t + .06, .7, 180, 900, .7); thump(t + .08, {f0:90, f1:40, dur:.35, gain:.55});
+    for (let i = 0; i < 10; i++) noiseHit(t + .3 + i * .09 + Math.random() * .05, {dur:.03, hp:1800, gain:.12}); },
   flamer(t) { const c = AU.ctx, s = c.createBufferSource(); s.buffer = AU.noise; const b = c.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = 700;
     const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.9, t + .1); g.gain.setValueAtTime(.9, t + .9); g.gain.linearRampToValueAtTime(0, t + 1.3);
     s.connect(b); b.connect(g); g.connect(out(1, .3)); s.start(t); s.stop(t + 1.4); for (let i = 0; i < 10; i++) noiseHit(t + .1 + i * .1, {dur:.05, hp:2500, gain:.15}); },   // the roar and crackle of a Flammenwerfer
@@ -4073,6 +4078,7 @@ const DIVERS = new Set(['ju87', 'ju87t', 'val', 'sbd', 'helldiver', 'judy', 'bar
 function fxClass(d) {
   if (NATION[d.nat] && NATION[d.nat].zed) return d.role === 'mortar' ? 'bile' : 'maul';
   const w = String(d.w || '');
+  if (/molotov|petrol bottle|incendiary bottle/i.test(w) && d.role === 'at') return 'molotov';   /* thrown, not sprayed */
   if (d.snd === 'flamer' && (d.role !== 'eng' || /flame/i.test(w))) return 'flamer';   // the Zippo; engineers only if they carry one
   if (d.role === 'eng') return 'charge';
   if (d.role === 'at') return d.snd === 'ptrd' ? 'atrifle' : d.snd === 'rocketAT' || d.snd === 'piat' ? 'rocketAT' : d.snd === 'flak20' ? 'atrifle' : 'cannon';   // bazookas and PIATs; AT rifles; anti-tank guns fire shells
@@ -4111,6 +4117,7 @@ async function fxAttackMap(u, t, killed, o = {}) {
     case 'smallarms': fire(); fxMuzzle(ax + dir * 14, ay - 8, dir, .5); fxTracers(u, t, u.role === 'nest' || snd === 'mg42' ? 12 : 7); if (S) impactSound(u.d, t.d, .15); await sleep(500); break;
     case 'flamer': fire(); for (let i = 0; i < 16; i++) setTimeout(() => { const [bx, by] = T2W(t.x, t.y); part({kind:'fire', x:ax + dir * 10, y:ay - 6, vx:(bx - ax) * rnd(1.6, 2.2), vy:(by - ay) * 2 - 20, size:rnd(5, 9), life:450}); }, i * 30); await sleep(500); fxFire(...T2W(t.x, t.y), 14, 10); break;
     case 'charge': await fxProjectile(u, t, 'arc', 450); fxExplosion(t.x, t.y, .8); bang(.8); break;
+    case 'molotov': fire(); await fxProjectile(u, t, 'arc', 480); { const [bx, by] = T2W(t.x, t.y); for (let i = 0; i < 10; i++) part({kind:'fire', x:bx + rnd(-10, 10), y:by + rnd(-4, 6), vx:rnd(-30, 30), vy:-rnd(20, 70), size:rnd(5, 9), life:rnd(400, 800)}); fxFire(bx, by, 10, 9); } if (S) sfx('molotov'); await sleep(250); break;
     case 'rocketAT': fire(); fxSmoke(ax - dir * 14, ay - 8, 4, .25, 10, 8); await fxProjectile(u, t, 'rocket', 300); fxExplosion(t.x, t.y, .7); bang(.7); clang(); break;
     case 'atrifle': fire(); fxMuzzle(ax + dir * 16, ay - 8, dir, .8); await fxProjectile(u, t, 'tracer', 120); fxSparks(...T2W(t.x, t.y), 10); clang(); break;
     case 'cannon': fire(); fxMuzzle(ax + dir * 20, ay - 10, dir, big); fxDust(ax, ay + 10, 4); shakeCam(2 * big); await fxProjectile(u, t, 'tracer', 140); fxExplosion(t.x, t.y, big * .8, {crater:false}); bang(.6 * big); clang(); break;
@@ -4724,7 +4731,7 @@ function drawSide(g, S, k, now) {
 /* ---------- volleys ---------- */
 function muzzleOf(S, f) { const p = slotPos(f.i, S.n0, S.side, S.air), dir = S.side ? -1 : 1; return {x:p.x + (S.side ? 6 : 58) * p.s, y:p.y + (S.u.d.foot ? 30 : 22) * p.s, dir, s:p.s}; }
 /* when the first rounds of each kind of volley reach the target (ms after the volley starts) */
-const IMPACT_MS = {smallarms:500, maul:400, bile:900, rocketAT:600, atrifle:300, flamer:700, charge:800, cannon:450, artillery:1500, naval:1600, mortar:1250, salvo:1400, flak:600, strafe:700, dive:1400, bombs:1400, rockets:700, torpedo:1500, depth:1500};
+const IMPACT_MS = {molotov:900, smallarms:500, maul:400, bile:900, rocketAT:600, atrifle:300, flamer:700, charge:800, cannon:450, artillery:1500, naval:1600, mortar:1250, salvo:1400, flak:600, strafe:700, dive:1400, bombs:1400, rockets:700, torpedo:1500, depth:1500};
 /* Every sound here is triggered by the picture: the report at each muzzle flash, the whistle while the shell falls,
    the detonation as it lands, and the man or tank it was meant for goes down with it. */
 function fireVolley(S, T, delay) {
@@ -4761,6 +4768,13 @@ function fireVolley(S, T, delay) {
         setTimeout(() => { bpSparks(h.x, h.y, 14); if (armour) sfxNow('clang'); strike(tf); }, 90); }); break;
       case 'flamer': for (let i = 0; i < 28; i++) later(stg + i * 30, () => { const h = hitPt(pick()); bp({k:'fire', x:m.x, y:m.y, vx:(h.x - m.x) * rnd(1.4, 1.9), vy:(h.y - m.y) * 1.8 - 30, size:rnd(8, 16), life:.55}); });
         later(stg + 600, () => { for (const tf of targets) { const h = hitPt(tf); bpFire(h.x, h.y, 10); setTimeout(() => strike(tf), rnd(0, 300)); } }); break;
+      case 'molotov': if (idx < 3) later(stg + idx * 180, () => { const tf = aim(), h = hitPt(tf);   // a bottle of petrol with a burning rag, lobbed at the tank
+          bpArc(m.x, m.y - 14, h.x, h.y - 6, 700, 110, 'molotov', () => {
+            for (let i = 0; i < 12; i++) bp({k:'spark', x:h.x, y:h.y - 8, vx:rnd(-160, 160), vy:-rnd(60, 220), g:700, life:rnd(.25, .5)});   // glass
+            bp({k:'flash', x:h.x, y:h.y - 8, size:44, life:.14});
+            for (let i = 0; i < 26; i++) setTimeout(() => { if (BAT.t0 === gen) bp({k:'fire', x:h.x + rnd(-22, 22), y:h.y - rnd(0, 26), vx:rnd(-18, 18), vy:-rnd(50, 140), size:rnd(7, 15), life:rnd(.4, .9)}); }, i * 45);   // burning petrol runs over the hull
+            if (Math.random() < .7) bpSmoke(h.x, h.y - 24, 3, .9, 16);
+            sfx('molotov'); strike(tf); }); }); break;
       case 'charge': later(stg, () => { const tf = aim(), h = hitPt(tf); bpArc(m.x, m.y, h.x, h.y, 600, 120, 'satchel', () => { bpExplode(h.x, h.y, 1.3); boom(1.1); strike(tf); strike(near(tf), .5); }); }); break;
       case 'cannon': later(stg * 2, () => { const big = S.u.role === 'htank' || S.u.role === 'pak' ? 1.5 : 1.1; shot(snd, {gain:vol}); bpFlash(m.x, m.y, 34 * big); bpFlash(m.x, m.y - 8, 14); bpFlash(m.x, m.y + 8, 14);
         bpSmoke(m.x, m.y, 5, .4, 22); bpDust(m.x - m.dir * 40, m.y + 40, 4); f.recoil = 14; BAT.shake = 6 * big; const tf = aim(), h = hitPt(tf); bpTracer(m.x, m.y, h.x, h.y, 5, 120);
@@ -4862,6 +4876,9 @@ function updateBattleParts(g, dt) {
           const k2 = Math.min(1, k + .02), x2 = p.x1 + (p.x2 - p.x1) * k2, y2 = p.y1 + (p.y2 - p.y1) * k2 - Math.sin(k2 * Math.PI) * (p.arc || 0);
           drawRocket(g, x, y, Math.atan2(y2 - y, x2 - x), 2.4); }
         else if (p.style === 'bile') { g.fillStyle = '#a8d040'; g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); bp({k:'goo', x, y, vx:0, vy:30, g:200, size:2, life:.4}); }
+        else if (p.style === 'molotov') {                // the bottle tumbles end over end, its rag burning
+          g.save(); g.translate(x, y); g.rotate(k * 11); g.fillStyle = '#4a6a3a'; g.fillRect(-2.5, -6, 5, 10); g.fillRect(-1.2, -9, 2.4, 3.5); g.fillStyle = 'rgba(210,230,200,.5)'; g.fillRect(-1.6, -4, 1.2, 6); g.restore();
+          bp({k:'fire', x:x + rnd(-2, 2), y:y - 4, vx:rnd(-10, 10), vy:-rnd(10, 40), size:rnd(3, 6), life:.22}); }
         else { g.fillStyle = p.style === 'satchel' ? '#6a5a3a' : '#2a2a26'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
         if (k > .96 && p.done) { const d = p.done; p.done = null; d(); }
         break; }
@@ -9863,7 +9880,7 @@ NATION.fi = {n:'Finland', adj:'Finnish', short:'Suomen Armeija', side:'allies',
   uniform:'#d4d8d2', helmet:'stahl', star:'ficross', skin:'#e8c4a4',
   u:{
     inf:  {n:'Ski Infantry', w:'Mosin m/28-30 & Suomi KP/-31', snd:'ppsh', mv:4, cost:1000},
-    at:   {n:'Molotov Cocktail Team', w:'Molotov cocktails & satchel charges', snd:'flamer', pow:.85, powArm:1.6, cost:2000},
+    at:   {n:'Molotov Cocktail Team', w:'Molotov cocktails & satchel charges', snd:'molotov', pow:.85, powArm:1.6, cost:2000},
     eng:  {n:'Pioneers', w:'mines, charges & axes', snd:'bangalore'},
     mortar:{n:'Tampella 81 mm Mortar', w:'81 mm mortar', snd:'mortar'},
     cav:  {n:'Ski Patrol (Sissi)', w:'Suomi submachine guns, on skis', snd:'ppsh', mv:6, cost:2200, horse:false},
@@ -9969,9 +9986,9 @@ const WINTER_MISSIONS = {
   summa:{name:'Summa', place:'The Mannerheim Line on the Karelian Isthmus', date:'17 December 1939, 09:00', theme:'winter', weather:'snow',
     p1:{nat:'fi', co:'mannerheim', funds:0, u:{inf:{n:'Infantry (5th Division)', mv:3}}},
     p2:{nat:'su39', co:'meretskov', funds:0},
-    objective:{win:'survive', days:7, hold:3, protect:'inf', protectN:5}, goal:'Hold the Mannerheim Line at Summa until {survive}. If you are down to four infantry units, or lose two of your four positions, the line is broken.', persona:{2:'brawler'},
+    objective:{win:'survive', days:12, hold:3, protect:'inf', protectN:2}, goal:'Hold the Mannerheim Line at Summa until {survive}, three days of assaults. If you are down to your last infantry unit, or lose two of your four positions, the line is broken.', persona:{2:'brawler'},
     brief:'Stalin expected a war of two weeks. On 30 November 1939 the Red Army invaded with half a million men and two thousand tanks. On the Karelian Isthmus it has reached the Mannerheim Line, a chain of bunkers, trenches and granite anti-tank rocks across the forests between the Gulf of Finland and Lake Ladoga. At Summa the Soviets attack head-on: T-28s and even two prototype heavy tanks, the KV and the SMK, against Finns who have almost no anti-tank guns. They have petrol bottles, which they call Molotov cocktails, after the Soviet foreign minister.',
-    clock:{start:'1939-12-17T09:00', step:120},
+    clock:{start:'1939-12-17T09:00', step:360},
     build:() => { const b = MB(32, 22, '.', 30101);
       b.blobs('T', 14, 0, 0, 31, 21, 1, 2).blobs('v', 3, 18, 0, 28, 21, 1, 2, ['.']);
       b.path([[11, 0], [11, 21]], (x, y) => b.set(x, y, 'O'));                               // the granite anti-tank rocks
@@ -9987,7 +10004,12 @@ const WINTER_MISSIONS = {
       {day:2, team:2, say:'The second wave: infantry in brown greatcoats, in the open, singing.', spawn:'inf*5 17,1-24,20'},
       {day:3, team:1, say:'The anti-tank teams let the tanks through the line, then burn them from behind with Molotov cocktails.', hurt:1},
       {day:4, team:2, say:'More T-26s, and the SMK heavy tank, the "Stalin\'s fortress".', spawn:'tank*4 16,5-22,16; htank 20,9; inf*3 18,2-24,19'},
-      {day:5, team:1, say:'Night. Thirty degrees of frost. The Soviet wounded freeze where they fall.', hurt:1}]},
+      {day:5, team:1, say:'Night. Thirty degrees of frost. The Soviet wounded freeze where they fall.', hurt:1},
+      {day:6, team:1, say:'Reserves come up through the forest: a battalion of the 5th Division and a few Bofors guns.', spawn:'inf*3 1,8-4,13; at*2 2,9-4,12'},
+      {day:7, team:2, say:'18 December. A new division is fed into the attack, behind a creeping barrage.', spawn:'inf*4 16,1-25,20; tank*2 17,5-23,16'},
+      {day:9, team:2, say:'The SMK, Stalin\'s three-turreted fortress, rolls forward again, with T-28s around it.', spawn:'htank 19,10; mtank*2 16,6-21,15'},
+      {day:10, team:1, say:'The Molotov teams go out at night into the snow, to the tanks stranded between the lines.', hurt:1},
+      {day:11, team:2, say:'19 December. The last great push of the December offensive.', spawn:'inf*4 16,2-24,19; tank 18,8-22,13'}]},
   tolvajarvi:{name:'Tolvajärvi', place:'The frozen lakes north of Lake Ladoga', date:'12 December 1939, 08:00', theme:'winter', weather:'snow',
     p1:{nat:'fi', co:'talvela', funds:0, u:{inf:{n:'Infantry Regiment 16 (on skis)'}}},
     p2:{nat:'su39', co:'belyaev', funds:0, u:{inf:{n:'139th Rifle Division'}}},
@@ -14096,6 +14118,7 @@ Object.assign(DIFFICULTY, {pointe:0.94, omaha:0.94, pegasus:0.31, carentan:0.56,
 
 /* all 150 battles after the ten new campaigns (2026-10-19): 16 named testers, reports/all150 */
 Object.assign(DIFFICULTY, {pointe:0.81, omaha:0.88, pegasus:0.38, carentan:0.63, villers:0.69, caen:0.75, cobra:0.63, falaise:1, paris:0.69, arnhem:0.44, hurtgen:0.19, bastogne:0.63, remagen:0.69, prokhorovka:0.63, bagration:0.63, vistula:0.63, seelow:0.31, berlin:0.75, kharkov:0.75, villersAxis:0.19, wacht:0.75, training:1, moscow:0.5, stalingrad:0.81, uranus:0.88, mokra:0.88, westerplatte:0.88, bzura:0.75, warsaw39:0.44, eben:0.69, sedan:0.88, montcornet:1, arras:1, dunkirk:0.44, riverplate:0.44, bismarck:0.94, midway:0.5, ironbottom:1, samar:0.81, hg76:0.81, ons5:0.94, sixkills:0.81, u505:0.81, wake:0.38, henderson:1, tarawa:0.88, iwo:0.81, okinawa:0.63, pearl:0.69, kotabharu:0.25, forcez:1, slimriver:0.19, singapore:0.38, sihang:0.31, taierzhuang:0.75, changsha:1, kunlun:0.63, yenangyaung:0.56, xuefeng:0.75, bedafomm:0.63, tobruk41:0.56, birhakeim:0.63, alamein:0.44, kasserine:0.44, tunis:0.5, halfaya:0.63, tobruk42:0.69, pindus:0.44, keren:0.5, birelgubi:1, folgore:0.81, gorgopotamos:0.56, gela43:0.38, montelungo:0.5, filottrano:0.56, taranto:1, coralsea:0.19, eastsolomons:0.44, santacruz:0.5, tungsten:0.75, philsea:0.38, engano:0.75, tengo:0.5, sonnenblume:0.25, medauar:0.81, totensonntag:0.69, dashwire:0.75, cauldron:1, matruh:0.69, alamhalfa:0.69, retreat42:0.81, sidibouzid:0.81, medenine:0.5, sittang:0.75, adminbox:0.88, whitecity:0.5, kohima:0.5, nunshigum:0.81, irrawaddy:0.38, meiktila:0.31, summa:0.63, tolvajarvi:0.31, suomussalmi:0.38, raate:0.63, kollaa:0.69, intermediate:0.81, viipuri:1, brest:0.5, raseiniai:0.63, smolensk:0.38, kiev:0.44, borodino:0.63, tula:0.69, moscowretreat:0.69, oscarsborg:1, narvikfjord:0.31, narvikland:0.44, maleme:0.81, galatas:0.31, sphakia:0.81, salerno:0.75, cassino:0.69, anzio:0.56, rome:0.31, coriano:0.31, montecastello:0.75, dieppe:0.63, ortona:0.56, cassinopl:0.5, juno:0.56, maczuga:0.5, scheldt:0.25, breda:0.44, bardia:0.81, isurava:0.81, milnebay:0.31, buna:0.81, shaggyridge:0.38, balikpapan:0.5, bataan:0.63, thepoints:0.63, corregidor:0.25, leyte:0.31, breakneck:0.31, manila:0.31, baintsagan:0.19, khalkhingol:0.88, khingan:0.38, mudanjiang:0.56, shumshu:0.44});
+Object.assign(DIFFICULTY, {summa:0.81});   /* reports/summa-r2: the longer, three-day Summa */
 
 /* ============================== MULTIPLAYER ===============================
    Three ways to play a human opponent:

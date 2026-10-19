@@ -100,6 +100,7 @@ const DIVERS = new Set(['ju87', 'ju87t', 'val', 'sbd', 'helldiver', 'judy', 'bar
 function fxClass(d) {
   if (NATION[d.nat] && NATION[d.nat].zed) return d.role === 'mortar' ? 'bile' : 'maul';
   const w = String(d.w || '');
+  if (/molotov|petrol bottle|incendiary bottle/i.test(w) && d.role === 'at') return 'molotov';   /* thrown, not sprayed */
   if (d.snd === 'flamer' && (d.role !== 'eng' || /flame/i.test(w))) return 'flamer';   // the Zippo; engineers only if they carry one
   if (d.role === 'eng') return 'charge';
   if (d.role === 'at') return d.snd === 'ptrd' ? 'atrifle' : d.snd === 'rocketAT' || d.snd === 'piat' ? 'rocketAT' : d.snd === 'flak20' ? 'atrifle' : 'cannon';   // bazookas and PIATs; AT rifles; anti-tank guns fire shells
@@ -138,6 +139,7 @@ async function fxAttackMap(u, t, killed, o = {}) {
     case 'smallarms': fire(); fxMuzzle(ax + dir * 14, ay - 8, dir, .5); fxTracers(u, t, u.role === 'nest' || snd === 'mg42' ? 12 : 7); if (S) impactSound(u.d, t.d, .15); await sleep(500); break;
     case 'flamer': fire(); for (let i = 0; i < 16; i++) setTimeout(() => { const [bx, by] = T2W(t.x, t.y); part({kind:'fire', x:ax + dir * 10, y:ay - 6, vx:(bx - ax) * rnd(1.6, 2.2), vy:(by - ay) * 2 - 20, size:rnd(5, 9), life:450}); }, i * 30); await sleep(500); fxFire(...T2W(t.x, t.y), 14, 10); break;
     case 'charge': await fxProjectile(u, t, 'arc', 450); fxExplosion(t.x, t.y, .8); bang(.8); break;
+    case 'molotov': fire(); await fxProjectile(u, t, 'arc', 480); { const [bx, by] = T2W(t.x, t.y); for (let i = 0; i < 10; i++) part({kind:'fire', x:bx + rnd(-10, 10), y:by + rnd(-4, 6), vx:rnd(-30, 30), vy:-rnd(20, 70), size:rnd(5, 9), life:rnd(400, 800)}); fxFire(bx, by, 10, 9); } if (S) sfx('molotov'); await sleep(250); break;
     case 'rocketAT': fire(); fxSmoke(ax - dir * 14, ay - 8, 4, .25, 10, 8); await fxProjectile(u, t, 'rocket', 300); fxExplosion(t.x, t.y, .7); bang(.7); clang(); break;
     case 'atrifle': fire(); fxMuzzle(ax + dir * 16, ay - 8, dir, .8); await fxProjectile(u, t, 'tracer', 120); fxSparks(...T2W(t.x, t.y), 10); clang(); break;
     case 'cannon': fire(); fxMuzzle(ax + dir * 20, ay - 10, dir, big); fxDust(ax, ay + 10, 4); shakeCam(2 * big); await fxProjectile(u, t, 'tracer', 140); fxExplosion(t.x, t.y, big * .8, {crater:false}); bang(.6 * big); clang(); break;

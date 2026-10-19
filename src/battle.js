@@ -321,7 +321,7 @@ function drawSide(g, S, k, now) {
 /* ---------- volleys ---------- */
 function muzzleOf(S, f) { const p = slotPos(f.i, S.n0, S.side, S.air), dir = S.side ? -1 : 1; return {x:p.x + (S.side ? 6 : 58) * p.s, y:p.y + (S.u.d.foot ? 30 : 22) * p.s, dir, s:p.s}; }
 /* when the first rounds of each kind of volley reach the target (ms after the volley starts) */
-const IMPACT_MS = {smallarms:500, maul:400, bile:900, rocketAT:600, atrifle:300, flamer:700, charge:800, cannon:450, artillery:1500, naval:1600, mortar:1250, salvo:1400, flak:600, strafe:700, dive:1400, bombs:1400, rockets:700, torpedo:1500, depth:1500};
+const IMPACT_MS = {molotov:900, smallarms:500, maul:400, bile:900, rocketAT:600, atrifle:300, flamer:700, charge:800, cannon:450, artillery:1500, naval:1600, mortar:1250, salvo:1400, flak:600, strafe:700, dive:1400, bombs:1400, rockets:700, torpedo:1500, depth:1500};
 /* Every sound here is triggered by the picture: the report at each muzzle flash, the whistle while the shell falls,
    the detonation as it lands, and the man or tank it was meant for goes down with it. */
 function fireVolley(S, T, delay) {
@@ -358,6 +358,13 @@ function fireVolley(S, T, delay) {
         setTimeout(() => { bpSparks(h.x, h.y, 14); if (armour) sfxNow('clang'); strike(tf); }, 90); }); break;
       case 'flamer': for (let i = 0; i < 28; i++) later(stg + i * 30, () => { const h = hitPt(pick()); bp({k:'fire', x:m.x, y:m.y, vx:(h.x - m.x) * rnd(1.4, 1.9), vy:(h.y - m.y) * 1.8 - 30, size:rnd(8, 16), life:.55}); });
         later(stg + 600, () => { for (const tf of targets) { const h = hitPt(tf); bpFire(h.x, h.y, 10); setTimeout(() => strike(tf), rnd(0, 300)); } }); break;
+      case 'molotov': if (idx < 3) later(stg + idx * 180, () => { const tf = aim(), h = hitPt(tf);   // a bottle of petrol with a burning rag, lobbed at the tank
+          bpArc(m.x, m.y - 14, h.x, h.y - 6, 700, 110, 'molotov', () => {
+            for (let i = 0; i < 12; i++) bp({k:'spark', x:h.x, y:h.y - 8, vx:rnd(-160, 160), vy:-rnd(60, 220), g:700, life:rnd(.25, .5)});   // glass
+            bp({k:'flash', x:h.x, y:h.y - 8, size:44, life:.14});
+            for (let i = 0; i < 26; i++) setTimeout(() => { if (BAT.t0 === gen) bp({k:'fire', x:h.x + rnd(-22, 22), y:h.y - rnd(0, 26), vx:rnd(-18, 18), vy:-rnd(50, 140), size:rnd(7, 15), life:rnd(.4, .9)}); }, i * 45);   // burning petrol runs over the hull
+            if (Math.random() < .7) bpSmoke(h.x, h.y - 24, 3, .9, 16);
+            sfx('molotov'); strike(tf); }); }); break;
       case 'charge': later(stg, () => { const tf = aim(), h = hitPt(tf); bpArc(m.x, m.y, h.x, h.y, 600, 120, 'satchel', () => { bpExplode(h.x, h.y, 1.3); boom(1.1); strike(tf); strike(near(tf), .5); }); }); break;
       case 'cannon': later(stg * 2, () => { const big = S.u.role === 'htank' || S.u.role === 'pak' ? 1.5 : 1.1; shot(snd, {gain:vol}); bpFlash(m.x, m.y, 34 * big); bpFlash(m.x, m.y - 8, 14); bpFlash(m.x, m.y + 8, 14);
         bpSmoke(m.x, m.y, 5, .4, 22); bpDust(m.x - m.dir * 40, m.y + 40, 4); f.recoil = 14; BAT.shake = 6 * big; const tf = aim(), h = hitPt(tf); bpTracer(m.x, m.y, h.x, h.y, 5, 120);
@@ -459,6 +466,9 @@ function updateBattleParts(g, dt) {
           const k2 = Math.min(1, k + .02), x2 = p.x1 + (p.x2 - p.x1) * k2, y2 = p.y1 + (p.y2 - p.y1) * k2 - Math.sin(k2 * Math.PI) * (p.arc || 0);
           drawRocket(g, x, y, Math.atan2(y2 - y, x2 - x), 2.4); }
         else if (p.style === 'bile') { g.fillStyle = '#a8d040'; g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); bp({k:'goo', x, y, vx:0, vy:30, g:200, size:2, life:.4}); }
+        else if (p.style === 'molotov') {                // the bottle tumbles end over end, its rag burning
+          g.save(); g.translate(x, y); g.rotate(k * 11); g.fillStyle = '#4a6a3a'; g.fillRect(-2.5, -6, 5, 10); g.fillRect(-1.2, -9, 2.4, 3.5); g.fillStyle = 'rgba(210,230,200,.5)'; g.fillRect(-1.6, -4, 1.2, 6); g.restore();
+          bp({k:'fire', x:x + rnd(-2, 2), y:y - 4, vx:rnd(-10, 10), vy:-rnd(10, 40), size:rnd(3, 6), life:.22}); }
         else { g.fillStyle = p.style === 'satchel' ? '#6a5a3a' : '#2a2a26'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
         if (k > .96 && p.done) { const d = p.done; p.done = null; d(); }
         break; }

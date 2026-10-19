@@ -206,6 +206,11 @@ const WEAPON = {
     whistle(t + 1.6, .7, 1500, 600); explosion(t + 2.3, 1.4); },
   bombs(t) { engine(t, 1.8, {f:70, gain:.13, lp:700, ramp:1.3}); whistle(t + .6, 1, 1700, 500); explosion(t + 1.6, 1.3); explosion(t + 1.8, 1); },
   rp3(t) { engine(t, 1.4, {f:95, gain:.1, lp:900, ramp:1.3}); for (let i = 0; i < 4; i++) whoosh(t + .5 + i * .12, .5, 500, 2500, .4); for (let i = 0; i < 4; i++) explosion(t + 1 + i * .14, .7); },
+  molotov(t) {                                                   // a bottle smashing on steel, then the petrol going up with a whoomp, and crackling
+    for (let i = 0; i < 6; i++) noiseHit(t + i * .018 + Math.random() * .01, {dur:.05 + Math.random() * .06, hp:3500 + Math.random() * 3000, gain:.35});
+    tone(t + .01, {f:3200, f1:2400, dur:.12, gain:.05, type:'triangle'});
+    whoosh(t + .06, .7, 180, 900, .7); thump(t + .08, {f0:90, f1:40, dur:.35, gain:.55});
+    for (let i = 0; i < 10; i++) noiseHit(t + .3 + i * .09 + Math.random() * .05, {dur:.03, hp:1800, gain:.12}); },
   flamer(t) { const c = AU.ctx, s = c.createBufferSource(); s.buffer = AU.noise; const b = c.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = 700;
     const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.9, t + .1); g.gain.setValueAtTime(.9, t + .9); g.gain.linearRampToValueAtTime(0, t + 1.3);
     s.connect(b); b.connect(g); g.connect(out(1, .3)); s.start(t); s.stop(t + 1.4); for (let i = 0; i < 10; i++) noiseHit(t + .1 + i * .1, {dur:.05, hp:2500, gain:.15}); },   // the roar and crackle of a Flammenwerfer
