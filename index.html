@@ -9325,7 +9325,7 @@ const FOX_MISSIONS = {
     events:[{day:1, team:1, say:'20:00. Stukas and the divisional artillery shell the posts round Ras el Medauar.', hurt:1},
       {day:2, team:2, say:'The Australians counter-attack at night with the bayonet to retake the lost posts.', spawn:'inf*3 17,7-20,14'},
       {day:3, team:2, say:'Matildas of the 7th Royal Tank Regiment come out of the inner line.', spawn:'htank*2 20,8-23,13'},
-      {day:4, team:1, say:'A sandstorm. Under cover of it the pioneers lift a lane through the minefield.', clear:[[15, 9], [16, 9], [17, 9], [15, 10], [16, 10], [17, 10], [18, 10]]},
+      {day:4, team:1, say:'A sandstorm. Under cover of it the pioneers lift a lane through the minefield.', clear:[[15, 7], [16, 7], [17, 7], [18, 7], [15, 8], [16, 8], [17, 8], [18, 8], [15, 9], [16, 9], [17, 9], [18, 9], [15, 10], [16, 10], [17, 10], [18, 10], [15, 11], [16, 11], [17, 11], [18, 11], [15, 12], [16, 12], [17, 12], [18, 12]]}   /* every mine and strand of wire in the band is lifted */,
       {day:5, team:2, say:'Morshead throws in his last reserve: the 2/12th Battalion and the carriers.', spawn:'inf*2 21,9-24,13; recon 22,11'}]},
   totensonntag:{name:'Totensonntag', place:'Sidi Rezegh, south-east of Tobruk', date:'23 November 1941, 07:00', theme:'desert', weather:'overcast',
     p1:{nat:'dak', co:'cruwell', funds:0, u:DAK41},
@@ -10068,7 +10068,7 @@ const WINTER_MISSIONS = {
       {day:3, team:1, say:'Night: minus forty. The Soviets burn their lorries to keep warm.', hurt:1},
       {day:4, team:2, say:'A Soviet ski battalion tries to open the road from the border.', spawn:'inf*3 30,6-33,15'},
       {day:5, team:1, say:'Another night in the forest for the 44th Division.', hurt:1},
-      {day:7, team:1, say:'The 44th Division\'s horses have frozen to death in their harness.', hurt:1}]},
+      {day:4, team:1, say:'The 44th Division\'s horses have frozen to death in their harness.', hurt:1}]},
   kollaa:{name:'Kollaa', place:'The Kollaa river, north of Lake Ladoga', date:'17 February 1940, 07:00', theme:'winter', weather:'snow',
     p1:{nat:'fi', co:'teittinen', funds:0, u:{inf:{n:'Infantry Regiment 34', mv:3}, eng:{n:'Simo Häyhä', w:'Mosin-Nagant m/28, iron sights, no scope', snd:'enfield', pow:1.5, powArm:.2, cost:2500}}},
     p2:{nat:'su39', co:'meretskov', funds:0},
@@ -12926,10 +12926,14 @@ function hud() {
   { const d = clockAt(G.day), daily = G.clock.step >= 1440; $('#day').textContent = daily ? fmtClock(G.day) : hhmm(d);
     $('#turnno').textContent = `${daily ? d.getFullYear() : d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear()} · turn ${G.day} · ${stepText(G.clock.step)} each${isNight() ? ' · night' : ''}`; }
   const o = G.objective;
+  /* the same objectives serve land and sea battles: ships are sunk and kept afloat, everything else is destroyed and kept in the fight */
+  const u1 = r => udef(G.teams[1].nat, r) || {n:r}, u2 = r => udef(G.teams[2].nat, r) || {n:r};
+  const left1 = G.units.filter(u => u.team === 1 && u.role === o.role).length, left2 = G.units.filter(u => u.team === 2 && u.role === o.role).length;
+  const killed = G.killTotal == null ? 0 : Math.max(0, G.killTotal - left2);
   $('#goal').textContent = o.win === 'waves' ? waveGoal()
-    : o.win === 'convoy' ? `Convoy: ${G.arrived} of ${o.need} ships through · ${G.units.filter(u => u.team === 1 && u.role === o.role).length} at sea`
-    : o.win === 'survive' ? `Hold until ${fmtClock(o.days + 1, G.clock, true)} · keep ${G.holdNeed || 1} of your positions (${Object.values(G.props).filter(p => p.owner === 1).length} held)${o.protect ? ` · keep ${o.protectN || 1} ${udef(G.teams[1].nat, o.protect).n} afloat` : ''}`
-    : o.win === 'kill' ? (o.n ? `Sink ${o.n} ${udef(G.teams[2].nat, o.role).n}s · ${(G.killTotal || 0) - G.units.filter(u => u.team === 2 && u.role === o.role).length} so far` : `Destroy every ${udef(G.teams[2].nat, o.role).n}`) + (o.limit ? ` by ${fmtClock(o.limit + 1, G.clock, true)}` : '')
+    : o.win === 'convoy' ? (u1(o.role).sea ? `Convoy: ${G.arrived} of ${o.need} ships through · ${left1} at sea` : `Get out: ${G.arrived} of ${o.need} through to the map edge · ${left1} ${u1(o.role).n} still on the way`)
+    : o.win === 'survive' ? `Hold until ${fmtClock(o.days + 1, G.clock, true)} · keep ${G.holdNeed || 1} of your positions (${Object.values(G.props).filter(p => p.owner === 1).length} held)${o.protect ? ` · keep at least ${o.protectN || 1} × ${u1(o.protect).n}${u1(o.protect).sea ? ' afloat' : ''}` : ''}`
+    : o.win === 'kill' ? (o.n ? `${u2(o.role).sea ? 'Sink' : 'Destroy'} ${o.n} × ${u2(o.role).n} · ${killed} so far` : `${u2(o.role).sea ? 'Sink' : 'Destroy'} every ${u2(o.role).n}`) + (o.limit ? ` by ${fmtClock(o.limit + 1, G.clock, true)}` : '')
     : o.limit ? `Take the HQ by ${fmtClock(o.limit + 1, G.clock, true)}` : 'Capture the enemy HQ';
   refreshVision();
   const mine = !isAI(G.turn) && !isRemote(G.turn) && !UI.busy;
@@ -13096,7 +13100,9 @@ async function beginTurn() {
     if (G.units.some(u => u.d.sub && u.team !== team)) tip('subs', 'Enemy U-boats are lurking submerged and invisible. Your escorts\' asdic finds them within two squares, aircraft spot them when overhead, and any ship alongside will see them. A U-boat that fires gives itself away until its next turn.');
     if (G.waves && G.waves.zed) tip('zed', 'Dead of Night: the dead come in waves, from more directions as the night goes on. Any infantry they kill rises as a Walker, so keep them at a distance: machine-gun nests, artillery and armour. Spitters lob bile over walls; Brutes tear open tanks; an Abomination comes every fifth wave.');
   else if (G.waves) tip('waves', 'Last Stand: waves come from the far edge every few turns, each stronger than the last. Supplies arrive with every wave; spend them at your depots. Dig in: units that hold still gain a star of cover.');
-    if (G.objective.win === 'convoy') tip('convoy', 'Convoy battle: steam the merchant ships to the far edge of the map. Screen them with escorts; U-boats will go for the merchantmen.');
+    if (G.objective.win === 'convoy') { const sea = (udef(G.teams[1].nat, G.objective.role) || {}).sea;
+      if (sea) tip('convoy', 'Convoy battle: steam the merchant ships to the far edge of the map. Screen them with escorts; U-boats will go for the merchantmen.');
+      else tip('breakout', 'Get-out battle: drive the units named in the objective off the map edge given in the briefing. Each one that reaches it counts; lose too many on the way and the battle is lost. Use everything else to cover them.'); }
     if (canPower(team, 1)) tip('power', 'Your general\'s power is ready. Use it from the button at the bottom right, or click empty ground for the menu. Saving up for the Super Power gives a bigger effect.'); }
   if (isAI(team)) await aiTurn(team);
   else { autosave(); const u = G.units.find(o => o.team === team && !o.d.fixed); if (u) { UI.cursor = {x:u.x, y:u.y}; focus(u.x, u.y); } }

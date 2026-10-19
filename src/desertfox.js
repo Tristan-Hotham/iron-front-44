@@ -129,7 +129,7 @@ const FOX_MISSIONS = {
     events:[{day:1, team:1, say:'20:00. Stukas and the divisional artillery shell the posts round Ras el Medauar.', hurt:1},
       {day:2, team:2, say:'The Australians counter-attack at night with the bayonet to retake the lost posts.', spawn:'inf*3 17,7-20,14'},
       {day:3, team:2, say:'Matildas of the 7th Royal Tank Regiment come out of the inner line.', spawn:'htank*2 20,8-23,13'},
-      {day:4, team:1, say:'A sandstorm. Under cover of it the pioneers lift a lane through the minefield.', clear:[[15, 9], [16, 9], [17, 9], [15, 10], [16, 10], [17, 10], [18, 10]]},
+      {day:4, team:1, say:'A sandstorm. Under cover of it the pioneers lift a lane through the minefield.', clear:[[15, 7], [16, 7], [17, 7], [18, 7], [15, 8], [16, 8], [17, 8], [18, 8], [15, 9], [16, 9], [17, 9], [18, 9], [15, 10], [16, 10], [17, 10], [18, 10], [15, 11], [16, 11], [17, 11], [18, 11], [15, 12], [16, 12], [17, 12], [18, 12]]}   /* every mine and strand of wire in the band is lifted */,
       {day:5, team:2, say:'Morshead throws in his last reserve: the 2/12th Battalion and the carriers.', spawn:'inf*2 21,9-24,13; recon 22,11'}]},
   totensonntag:{name:'Totensonntag', place:'Sidi Rezegh, south-east of Tobruk', date:'23 November 1941, 07:00', theme:'desert', weather:'overcast',
     p1:{nat:'dak', co:'cruwell', funds:0, u:DAK41},

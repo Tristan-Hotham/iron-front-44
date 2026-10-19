@@ -202,7 +202,7 @@ const WINTER_MISSIONS = {
       {day:3, team:1, say:'Night: minus forty. The Soviets burn their lorries to keep warm.', hurt:1},
       {day:4, team:2, say:'A Soviet ski battalion tries to open the road from the border.', spawn:'inf*3 30,6-33,15'},
       {day:5, team:1, say:'Another night in the forest for the 44th Division.', hurt:1},
-      {day:7, team:1, say:'The 44th Division\'s horses have frozen to death in their harness.', hurt:1}]},
+      {day:4, team:1, say:'The 44th Division\'s horses have frozen to death in their harness.', hurt:1}]},
   kollaa:{name:'Kollaa', place:'The Kollaa river, north of Lake Ladoga', date:'17 February 1940, 07:00', theme:'winter', weather:'snow',
     p1:{nat:'fi', co:'teittinen', funds:0, u:{inf:{n:'Infantry Regiment 34', mv:3}, eng:{n:'Simo Häyhä', w:'Mosin-Nagant m/28, iron sights, no scope', snd:'enfield', pow:1.5, powArm:.2, cost:2500}}},
     p2:{nat:'su39', co:'meretskov', funds:0},

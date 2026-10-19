@@ -211,10 +211,14 @@ function hud() {
   { const d = clockAt(G.day), daily = G.clock.step >= 1440; $('#day').textContent = daily ? fmtClock(G.day) : hhmm(d);
     $('#turnno').textContent = `${daily ? d.getFullYear() : d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear()} · turn ${G.day} · ${stepText(G.clock.step)} each${isNight() ? ' · night' : ''}`; }
   const o = G.objective;
+  /* the same objectives serve land and sea battles: ships are sunk and kept afloat, everything else is destroyed and kept in the fight */
+  const u1 = r => udef(G.teams[1].nat, r) || {n:r}, u2 = r => udef(G.teams[2].nat, r) || {n:r};
+  const left1 = G.units.filter(u => u.team === 1 && u.role === o.role).length, left2 = G.units.filter(u => u.team === 2 && u.role === o.role).length;
+  const killed = G.killTotal == null ? 0 : Math.max(0, G.killTotal - left2);
   $('#goal').textContent = o.win === 'waves' ? waveGoal()
-    : o.win === 'convoy' ? `Convoy: ${G.arrived} of ${o.need} ships through · ${G.units.filter(u => u.team === 1 && u.role === o.role).length} at sea`
-    : o.win === 'survive' ? `Hold until ${fmtClock(o.days + 1, G.clock, true)} · keep ${G.holdNeed || 1} of your positions (${Object.values(G.props).filter(p => p.owner === 1).length} held)${o.protect ? ` · keep ${o.protectN || 1} ${udef(G.teams[1].nat, o.protect).n} afloat` : ''}`
-    : o.win === 'kill' ? (o.n ? `Sink ${o.n} ${udef(G.teams[2].nat, o.role).n}s · ${(G.killTotal || 0) - G.units.filter(u => u.team === 2 && u.role === o.role).length} so far` : `Destroy every ${udef(G.teams[2].nat, o.role).n}`) + (o.limit ? ` by ${fmtClock(o.limit + 1, G.clock, true)}` : '')
+    : o.win === 'convoy' ? (u1(o.role).sea ? `Convoy: ${G.arrived} of ${o.need} ships through · ${left1} at sea` : `Get out: ${G.arrived} of ${o.need} through to the map edge · ${left1} ${u1(o.role).n} still on the way`)
+    : o.win === 'survive' ? `Hold until ${fmtClock(o.days + 1, G.clock, true)} · keep ${G.holdNeed || 1} of your positions (${Object.values(G.props).filter(p => p.owner === 1).length} held)${o.protect ? ` · keep at least ${o.protectN || 1} × ${u1(o.protect).n}${u1(o.protect).sea ? ' afloat' : ''}` : ''}`
+    : o.win === 'kill' ? (o.n ? `${u2(o.role).sea ? 'Sink' : 'Destroy'} ${o.n} × ${u2(o.role).n} · ${killed} so far` : `${u2(o.role).sea ? 'Sink' : 'Destroy'} every ${u2(o.role).n}`) + (o.limit ? ` by ${fmtClock(o.limit + 1, G.clock, true)}` : '')
     : o.limit ? `Take the HQ by ${fmtClock(o.limit + 1, G.clock, true)}` : 'Capture the enemy HQ';
   refreshVision();
   const mine = !isAI(G.turn) && !isRemote(G.turn) && !UI.busy;
@@ -381,7 +385,9 @@ async function beginTurn() {
     if (G.units.some(u => u.d.sub && u.team !== team)) tip('subs', 'Enemy U-boats are lurking submerged and invisible. Your escorts\' asdic finds them within two squares, aircraft spot them when overhead, and any ship alongside will see them. A U-boat that fires gives itself away until its next turn.');
     if (G.waves && G.waves.zed) tip('zed', 'Dead of Night: the dead come in waves, from more directions as the night goes on. Any infantry they kill rises as a Walker, so keep them at a distance: machine-gun nests, artillery and armour. Spitters lob bile over walls; Brutes tear open tanks; an Abomination comes every fifth wave.');
   else if (G.waves) tip('waves', 'Last Stand: waves come from the far edge every few turns, each stronger than the last. Supplies arrive with every wave; spend them at your depots. Dig in: units that hold still gain a star of cover.');
-    if (G.objective.win === 'convoy') tip('convoy', 'Convoy battle: steam the merchant ships to the far edge of the map. Screen them with escorts; U-boats will go for the merchantmen.');
+    if (G.objective.win === 'convoy') { const sea = (udef(G.teams[1].nat, G.objective.role) || {}).sea;
+      if (sea) tip('convoy', 'Convoy battle: steam the merchant ships to the far edge of the map. Screen them with escorts; U-boats will go for the merchantmen.');
+      else tip('breakout', 'Get-out battle: drive the units named in the objective off the map edge given in the briefing. Each one that reaches it counts; lose too many on the way and the battle is lost. Use everything else to cover them.'); }
     if (canPower(team, 1)) tip('power', 'Your general\'s power is ready. Use it from the button at the bottom right, or click empty ground for the menu. Saving up for the Super Power gives a bigger effect.'); }
   if (isAI(team)) await aiTurn(team);
   else { autosave(); const u = G.units.find(o => o.team === team && !o.d.fixed); if (u) { UI.cursor = {x:u.x, y:u.y}; focus(u.x, u.y); } }
