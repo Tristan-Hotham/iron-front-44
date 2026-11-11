@@ -122,7 +122,7 @@ function battleScene(att, def, res, preAtt, preDef) {
       if (!fired.a && k > 450) { fired.a = true; fireVolley(A, D, 0); sayIn(A, 'atk'); }
       if (counter && !fired.c && k > cAt) { fired.c = true; fireVolley(D, A, 0); if (Math.random() < .6) sayIn(D, 'atk'); }
       const g = bctx; g.setTransform(BQ, 0, 0, BQ, 0, 0);
-      const sh = BAT.shake * (Math.random() - .5); BAT.shake *= .9; g.setTransform(BQ, 0, 0, BQ, sh * BQ, sh * .6 * BQ);
+      const sh = reducedMotion() ? 0 : BAT.shake * (Math.random() - .5); BAT.shake *= .9; g.setTransform(BQ, 0, 0, BQ, sh * BQ, sh * .6 * BQ);
       g.drawImage(bg, 0, 0, BW, BH); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';   // the 4× models are drawn slightly smaller than painted: filtered, they stay crisp
       for (const S of [A, D]) drawSide(g, S, k, now);
       updateBattleParts(g, dt);

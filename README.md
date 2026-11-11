@@ -4,7 +4,7 @@
 
 ![Bit-zkrieg: Iron Front '44](poster.jpg)
 
-A Second World War turn-based tactics game in the Advance Wars mould. There are 149 battles in twenty-three campaigns: Khalkhin Gol, the Winter War, Shanghai in 1937, the invasion of Poland, the fall of France, the Desert War from Beda Fomm to Tunis, Italy's own war from the Pindus to Filottrano, the Atlantic, the carrier war from Taranto to Ten-Go, Pearl Harbor to Singapore, the Pacific, China's War of Resistance, and Normandy and the Eastern Front through to the Reichstag. Every battle has a historical briefing, the real forces and generals, and an aftermath telling you what actually happened.
+A Second World War turn-based tactics game in the Advance Wars mould. There are 152 battles in twenty-four campaigns: Khalkhin Gol, the Winter War, Shanghai in 1937, the invasion of Poland, the fall of France, Syria and Lebanon in 1941, the Desert War from Beda Fomm to Tunis, Italy's own war from the Pindus to Filottrano, the Atlantic, the carrier war from Taranto to Ten-Go, Pearl Harbor to Singapore, the Pacific, China's War of Resistance, and Normandy and the Eastern Front through to the Reichstag. Every battle has a historical briefing, the real forces and generals, and an aftermath telling you what actually happened.
 
 ![El Alamein](docs/screens/alamein.png)
 
@@ -14,8 +14,9 @@ A Second World War turn-based tactics game in the Advance Wars mould. There are 
 
 ## Modes
 
-- **Campaigns:** twenty-three campaigns, Allied and Axis, 149 battles from Khalkhin Gol in 1939 to the Kuril Islands in 1945, each with its history: among them the Winter War, the Desert Fox, Barbarossa, Burma, the Australians, Canada and Poland, the Philippines and Zhukov in the Far East.
+- **Campaigns:** twenty-four campaigns, Allied and Axis, 152 battles from Khalkhin Gol in 1939 to the Kuril Islands in 1945, each with its history: among them the Winter War, Operation Exporter in Syria and Lebanon, the Desert Fox, Barbarossa, Burma, the Australians, Canada and Poland, the Philippines and Zhukov in the Far East.
 - **Skirmish:** random land and island maps, any two armies, and a choice of enemy general.
+- **Base Building:** a turn-based, Command & Conquer-style mode for up to eight players, people on one device and computer generals, free-for-all or in teams. Build a base round your HQ, send lorries out to the wheat fields, and destroy every enemy HQ. See [the design note](docs/base-building-mode.md) and [the prototype notes](docs/base-building-notes.md).
 - **Last Stand:** hold your HQ against growing waves. You can pick your starting money and troops.
 - **Dead of Night:** zombie wave defence. The dead you kill rise again.
 - **Map Builder:** paint terrain and units, share maps as codes, and run an AI balance check.
@@ -41,7 +42,9 @@ The game is plain JavaScript with no dependencies. The source modules live in `s
 node tools\credits.js   # regenerates CREDITS.md from src/music.js
 ```
 
-Open `index.html#validate` to run the built-in checks. Open `#testers` to watch the eight AI tester personas play and report back.
+On Linux or macOS, `node tools/build.js` does the same as `build.ps1`.
+
+Open `index.html#validate` to run the built-in checks. Open `#testers` to watch the eight AI tester personas play and report back. `node tools/smoke.js` plays the built game in Chromium through the real interface, on desktop and phone sizes, and fails on any console error (it needs Playwright).
 
 ![War map](docs/screens/war-map.png)
 

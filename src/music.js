@@ -101,7 +101,9 @@ function musicMood(mood, force, nat) {
   if (old && MUSIC.mood && MUSIC.playing) { MUSIC.pos[MUSIC.mood] = {file:MUSIC.playing.file, t:old.currentTime}; }
   MUSIC.mood = mood;
   let list = MUSIC.tracks.filter(t => t.mood.includes(base) && !musicOff(t));
+  if (base !== 'defeat' && list.some(t => !t.mood.includes('defeat'))) list = list.filter(t => !t.mood.includes('defeat'));   // laments (The Last Post, Taps) are for defeats, not for an army's battle music
   if (nat && list.some(t => t.mood.includes(nat))) list = list.filter(t => t.mood.includes(nat));
+  else if (nat && base === 'defeat') list = list.filter(t => t.file === 'chopin-funeral-march.m4a');   // an army with no lament of its own gets Chopin's funeral march, never another country's
   const camp = MUSIC.tracks.filter(t => t.mood.includes('campaign') && !musicOff(t));   // an unknown mood falls back to the campaign pieces, never to any army's anthem
   MUSIC.list = list.length ? list : camp.length ? camp : MUSIC.tracks.filter(t => !musicOff(t));
   if (MUSIC.idx[mood] == null) MUSIC.idx[mood] = Math.random() * MUSIC.list.length | 0;

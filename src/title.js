@@ -29,7 +29,7 @@ function titleFrame(now) {
   const dt = Math.min(.1, (now - (TITLE.last || now)) / 1000); TITLE.last = now;
   const W = TITLE.W, H = TITLE.H, g = c.getContext('2d'), t = (now - TITLE.t0) / 1000, S = Math.max(1, W / 700);
   g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false;
-  const zoom = 1.03 + Math.sin(t / 11) * .012, ox = Math.sin(t / 13) * W * .008, oy = Math.cos(t / 17) * H * .006;   // the camera breathes
+  const still = reducedMotion(), zoom = still ? 1.03 : 1.03 + Math.sin(t / 11) * .012, ox = still ? 0 : Math.sin(t / 13) * W * .008, oy = still ? 0 : Math.cos(t / 17) * H * .006;   // the camera breathes (unless motion is reduced)
   g.setTransform(zoom, 0, 0, zoom, -W * (zoom - 1) / 2 + ox, -H * (zoom - 1) / 2 + oy);
   g.drawImage(TITLE.layer, 0, 0);
   // clouds drifting over the sun

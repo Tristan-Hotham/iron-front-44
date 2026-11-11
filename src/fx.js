@@ -7,7 +7,10 @@ const T2W = (tx, ty) => [tx * ART + ART / 2, ty * ART + ART / 2];
 const rnd = (a, b) => a + Math.random() * (b - a);
 
 function part(o) { if (FAST || !SET.fx && o.kind !== 'text') return; o.t0 = performance.now(); o.life = o.life || 800; FX.parts.push(o); if (FX.parts.length > 2500) FX.parts.splice(0, 300); }
-function shakeCam(a) { if (!FAST) FX.shake = Math.max(FX.shake, a); }
+/* the player's reduced-motion setting: no camera shake, no drifting title camera, and the view jumps instead of gliding */
+const RM_Q = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+const reducedMotion = () => !!(RM_Q && RM_Q.matches);
+function shakeCam(a) { if (!FAST && !reducedMotion()) FX.shake = Math.max(FX.shake, a); }
 function lightAt(wx, wy, r, col = '255,200,120', life = 260) { if (!FAST) FX.lights.push({wx, wy, r, col, t0:performance.now(), life}); }
 
 function fxSmoke(wx, wy, n = 6, dark = .5, size = 10, rise = 30) {
@@ -38,6 +41,9 @@ function stampFallen(tx, ty, nat, n = 2, quiet) {
   if (!quiet) { G.fallen = G.fallen || []; G.fallen.push({x:tx, y:ty, nat, n}); if (G.fallen.length > 150) G.fallen.shift(); }
 }
 function fxText(tx, ty, text, col = '#ffde6a', life = 1300) { const [x, y] = T2W(tx, ty); part({kind:'text', x, y:y - 20, vx:0, vy:-26, text, col, life}); }
+/* damage numbers: strength lost, large and red, popping in over the unit; a hit that costs no strength says so instead of "-0" */
+function fxDmg(tx, ty, lost, killed) { const [x, y] = T2W(tx, ty);
+  part({kind:'text', x, y:y - 24, vx:0, vy:-22, text:lost > 0 ? '\u2212' + lost + (killed ? '' : ' HP') : 'no loss', col:lost > 0 ? (killed ? '#ff9a3a' : '#ff5a44') : '#d8d0b8', life:1500, big:lost > 0}); }
 /* barks: what the men shout, in their own language */
 const BARKS = {
   ger:{sel:['Jawohl!', 'Zu Befehl!', 'Los, los!', 'Weiter!'], veh:['Panzer marsch!', 'Motor läuft!', 'Jawohl!'], atk:['Feuer frei!', 'Feuer!', 'Ziel erkannt!'], kill:['Volltreffer!', 'Erledigt!', 'Abschuss!'], hurt:['Sanitäter!', 'Deckung!', 'Rückzug!']},
@@ -240,7 +246,7 @@ function fxDraw(ctx, now) {
         ctx.fillStyle = '#f4efe0'; ctx.strokeStyle = '#1a1814'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(bx, by, w, h, 6); ctx.fill(); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(p.x - 5, by + h - 1); ctx.lineTo(p.x + (p.flip ? 6 : -6), by + h + 8); ctx.lineTo(p.x + 5, by + h - 1); ctx.fill(); ctx.stroke(); ctx.fillRect(p.x - 4, by + h - 3, 8, 3);
         ctx.fillStyle = '#1a1814'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.text, p.x, by + h / 2 + 1); ctx.textBaseline = 'alphabetic'; ctx.globalAlpha = 1; break; }
-      case 'text': { ctx.globalAlpha = 1 - k * k; ctx.font = 'bold 20px "Courier Prime",monospace'; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.strokeText(p.text, p.x, p.y); ctx.fillStyle = p.col; ctx.fillText(p.text, p.x, p.y); ctx.globalAlpha = 1; break; }
+      case 'text': { ctx.globalAlpha = 1 - k * k; ctx.font = `bold ${p.big ? Math.round(28 * (k < .1 && !reducedMotion() ? 1.5 - k * 5 : 1)) : 20}px "Courier Prime",monospace`; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.strokeText(p.text, p.x, p.y); ctx.fillStyle = p.col; ctx.fillText(p.text, p.x, p.y); ctx.globalAlpha = 1; break; }
       case 'chute': { const y = p.y0 + (p.y1 - p.y0) * k, sw = Math.sin(now / 300 + p.x) * 4;
         ctx.fillStyle = '#e8e4d8'; ctx.beginPath(); ctx.arc(p.x + sw, y - 18, 11, Math.PI, 0); ctx.fill(); ctx.strokeStyle = '#8a8478'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.x + sw - 11, y - 18); ctx.lineTo(p.x, y); ctx.lineTo(p.x + sw + 11, y - 18); ctx.stroke();
         ctx.fillStyle = p.crate ? '#7a6a40' : '#4a4a30'; ctx.fillRect(p.x - 3, y - 2, 6, p.crate ? 6 : 8); break; }
