@@ -16,6 +16,7 @@ A Second World War turn-based tactics game in the Advance Wars mould. There are 
 
 - **Campaigns:** twenty-three campaigns, Allied and Axis, 149 battles from Khalkhin Gol in 1939 to the Kuril Islands in 1945, each with its history: among them the Winter War, the Desert Fox, Barbarossa, Burma, the Australians, Canada and Poland, the Philippines and Zhukov in the Far East.
 - **Skirmish:** random land and island maps, any two armies, and a choice of enemy general.
+- **Base Building:** a turn-based, Command & Conquer-style mode for up to eight players, people on one device and computer generals, free-for-all or in teams. Build a base round your HQ, send lorries out to the wheat fields, and destroy every enemy HQ. See [the design note](docs/base-building-mode.md).
 - **Last Stand:** hold your HQ against growing waves. You can pick your starting money and troops.
 - **Dead of Night:** zombie wave defence. The dead you kill rise again.
 - **Map Builder:** paint terrain and units, share maps as codes, and run an AI balance check.
@@ -37,6 +38,7 @@ The game is plain JavaScript with no dependencies. The source modules live in `s
 
 ```powershell
 .\build.ps1             # writes index.html (and dist/ for an offline copy)
+node tools/build.js     # the same build on Linux or macOS
 .\serve.ps1             # local dev server on http://localhost:8790/
 node tools\credits.js   # regenerates CREDITS.md from src/music.js
 ```
