@@ -10,7 +10,7 @@
      Contributor level or above. */
 const NET = {db:null, user:null, uid:null, ready:null, unsub:null, games:[], unsubList:null};
 const isRemote = t => !!(G && G.online && t !== G.online.seat);
-const isLocalHotseat = () => G && !G.online && !G.pbem && !G.teams[1].ai && !G.teams[2].ai;
+const isLocalHotseat = () => G && !G.online && !G.pbem && (G.bb ? G.bb.seats.filter(t => !G.teams[t].ai && !G.bb.out[t]).length > 1 : !G.teams[1].ai && !G.teams[2].ai);   // base building: any two people sharing the device
 
 /* ---------- packing a game into a compact string ---------- */
 async function packState(str) {

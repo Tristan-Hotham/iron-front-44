@@ -166,13 +166,13 @@ select, input[type=range] { font: inherit; background: var(--drab2); color: var(
 .cobody .fund::before { content: 'Funds '; color: #b9b090; font-weight: 400; }
 .meter { grid-column: 1 / -1; display: flex; gap: 2px; margin-top: 2px; direction: ltr; }
 .co.right .meter { justify-content: flex-end; }
-.meter i { width: 9px; height: 9px; background: linear-gradient(90deg, var(--brass) calc(var(--f) * 100%), #0006 0); clip-path: polygon(50% 0, 62% 35%, 100% 38%, 70% 60%, 80% 100%, 50% 76%, 20% 100%, 30% 60%, 0 38%, 38% 35%); }
+.meter i { width: 9px; height: 9px; background: linear-gradient(90deg, var(--brass) calc(var(--f) * 100%), #ffffff2e 0); clip-path: polygon(50% 0, 62% 35%, 100% 38%, 70% 60%, 80% 100%, 50% 76%, 20% 100%, 30% 60%, 0 38%, 38% 35%); }
 .meter i.big { width: 12px; height: 12px; margin-top: -1px; }
 .meter i.on { filter: drop-shadow(0 0 3px #ffd36a); }
 .pw { grid-column: 1 / -1; color: #ff9a6a; font-size: 11px; letter-spacing: .08em; direction: ltr; }
 .mid { text-align: center; background: #23251ae6; border: 2px solid var(--line); padding: 4px 14px; max-width: 30vw; }
 .mid b { font-family: var(--display); font-size: 22px; display: block; letter-spacing: .06em; }
-.mid small { font-family: var(--type); font-size: 12px; color: #d6caa4; }
+.mid small { font-family: var(--type); font-size: 13px; color: #ece2c2; }
 #bottom { position: fixed; bottom: env(safe-area-inset-bottom, 0px); left: 0; right: 0; display: flex; gap: 8px; padding: 8px; align-items: flex-end; flex-wrap: wrap; pointer-events: none; }
 #bottom > * { pointer-events: auto; }
 #tinfo, #uinfo { background: #23251ae6; border: 2px solid var(--line); padding: 6px 10px; display: grid; gap: 1px; font-size: 13px; min-width: 0; }
@@ -187,13 +187,13 @@ select, input[type=range] { font: inherit; background: var(--drab2); color: var(
 #endturn:disabled { opacity: .4; cursor: default; }
 #cop, #scop { background: #6a3a1a; border-color: #e0a050; animation: pulse 1.2s infinite alternate; }
 @keyframes pulse { to { box-shadow: 0 0 12px #ffb050; } }
-#forecast { position: fixed; top: 92px; left: 50%; transform: translateX(-50%); background: #0d0c0ae8; padding: 8px 14px; border: 1px solid var(--red); border-radius: 4px; font-size: 14px; line-height: 1.45; max-width: min(560px, calc(100vw - 24px)); box-shadow: 0 4px 0 #0008; z-index: 20; }
+#forecast { position: fixed; top: 92px; left: 50%; transform: translateX(-50%); background: #0d0c0ae8; padding: 8px 14px; border: 1px solid var(--red); border-radius: 4px; font-size: 14px; line-height: 1.45; max-width: min(560px, calc(100vw - 24px)); box-shadow: 0 4px 0 #0008; z-index: 27; }
 #forecast .fc-row { margin: 2px 0; }
 #forecast .fc-me { color: #ffd34a; } #forecast .fc-foe { color: #ff7a5a; } #forecast .fc-dim { opacity: .72; font-size: 13px; }
 #forecast .fc-kill { color: #9ae07a; } #forecast .fc-may { color: #ffb02e; }
 #forecast .fc-btns { display: flex; gap: 8px; justify-content: center; margin-top: 6px; } #forecast .fc-btns button { min-width: 96px; }
 
-#menu { position: fixed; z-index: 20; background: #23251a; border: 2px solid var(--brass); display: grid; min-width: 150px; box-shadow: 0 6px 0 #0008; max-height: calc(100vh - 100px); overflow-y: auto; }
+#menu { position: fixed; z-index: 27; background: #23251a; border: 2px solid var(--brass); display: grid; min-width: 150px; box-shadow: 0 6px 0 #0008; max-height: calc(100vh - 100px); overflow-y: auto; }
 #menu button { background: none; border: 0; color: var(--ink); text-align: left; padding: 8px 14px; font-family: var(--display); font-size: 17px; letter-spacing: .04em; border-bottom: 1px solid #ffffff10; }
 #menu button:hover:not(:disabled), #menu button:focus { background: #4a4f34; outline: none; }
 #menu button:disabled { opacity: .4; cursor: default; }
@@ -391,7 +391,7 @@ body.hudless #viewbtns #maptoggle { display: none; }
   .co { padding: 3px 5px !important; gap: 5px !important; }
   .co .pt canvas { width: 34px !important; height: 34px !important; } .cobody .nm { font-size: 12px; } .cobody { font-size: 11px; }   /* portraitCanvas sets an inline size */
   .cobody .fund::before { content: ''; } .meter i { width: 7px; height: 7px; } .meter i.big { width: 9px; height: 9px; }
-  .mid b { font-size: 13px; } .mid #goal { font-size: 9.5px; -webkit-line-clamp: 2; }
+  .mid b { font-size: 13px; } .mid #goal { font-size: 10.5px; -webkit-line-clamp: 2; }
   #bottom { padding: 4px; gap: 4px; }
   #tinfo, #uinfo { padding: 3px 6px; font-size: 10.5px; } #tinfo b, #uinfo b { font-size: 13px; }
   #tinfo .mvc, #tinfo .tip, #uinfo .nm2 { display: none; }
@@ -405,3 +405,14 @@ body.hudless #viewbtns #maptoggle { display: none; }
 
 /* Netlify injects a badge iframe over the bottom corner of every page it serves; on phones it covered End turn (learned from Neon Protocol) */
 #nl-badge-frame { display: none !important; }
+
+/* phones held upright: End turn gets its own full-width row under the four smaller buttons, every button is a 44 px target,
+   and the field notes sit above the bottom bar so they never cover the order menu or the attack forecast at the top */
+@media (max-width: 640px) and (min-height: 481px) {
+  #bottom .acts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; margin-left: 0; }
+  #bottom .acts button { min-height: 44px; padding: 4px 3px; }
+  #bottom .acts #endturn { grid-column: 1 / -1; order: 9; font-size: 17px; letter-spacing: .1em; min-height: 48px; }
+  #bottom .acts #cop, #bottom .acts #scop, #bottom .acts #ffwd { grid-column: span 2; }
+  #viewbtns button { min-width: 44px; min-height: 44px; }
+  body[data-screen="game"] #tip { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 168px); }
+}

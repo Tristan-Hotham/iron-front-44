@@ -8,7 +8,7 @@ const NEW_MISSIONS = {
   training:{name:'Basic Training', place:'Salisbury Plain, Wiltshire', date:'May 1944', theme:'spring', weather:'clear',
     p1:{nat:'uk', co:'monty', funds:3000}, p2:{nat:'ger', co:'rommel', funds:0}, income:{2:0},
     objective:{win:'hq', limit:14}, goal:'Learn the drill, then capture the "enemy" HQ in the village by {limit}.',
-    brief:'Every unit that went ashore in June trained for months on the ranges of southern England. Today\'s exercise: a company of the 50th Division against a few "German" positions played by the Home Guard. Click a unit to see where it can move (blue) and what it can hit (red). Click a square, then choose an order. Infantry capture towns and the HQ by standing on them. Your general\'s star meter fills as you fight; when it is full, use his power. Press H at any time for your adviser\'s suggestion.',
+    brief:'Every unit that went ashore in June trained for months on the ranges of southern England. Today\'s exercise: a company of the 50th Division against a few "German" positions played by the Home Guard. Click or tap a unit to see where it can move (blue) and what it can hit (red). Click or tap a square, then choose an order. Infantry capture towns and the HQ by standing on them. Your general\'s star meter fills as you fight; when it is full, use his power. For a suggestion at any time, ask your adviser: press H, or open the menu on empty ground and choose Adviser.',
     clock:{start:'1944-05-10T08:00', step:60},
     build:() => { const b = MB(22, 14, '.', 1944);
       b.blobs(',', 6, 0, 0, 21, 13, 1, 2).blobs('T', 5, 6, 0, 21, 13, 1, 1).blobs('h', 4, 8, 0, 21, 13, 1, 1);

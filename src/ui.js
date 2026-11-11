@@ -7,6 +7,8 @@ const cam = {x:0, y:0, z:.8};
 let dpr = 1, FAST = false, ME = 1;
 const UI = {mode:'idle', sel:null, reach:null, path:null, origin:null, cursor:{x:0, y:0}, targets:[], hoverEnemy:null, busy:false, cargoPick:null, campaign:null};
 const sleep = ms => FAST ? Promise.resolve() : new Promise(r => setTimeout(r, SET.aiFast && G && isAI(G.turn) ? ms * .5 : ms));
+/* a phone or tablet: the first field notes appear before the first touch is seen, so ask the device rather than wait for a tap */
+const touchUI = () => !!UI.touch || (typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches);
 const isAI = t => G && G.teams[t].ai;
 const fmt = n => n.toLocaleString('en-GB');
 const U = ART / 32;                                        // world units per art pixel of the 32 grid
@@ -20,7 +22,7 @@ const seen = u => { const v = viewerTeam(); return !(v && subHidden(u, v)) && (!
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
-  if (G) clampCam();
+  if (G) { clampCam(); layoutHud(); }
 }
 /* the camera may run well past every edge: by the height of the HUD actually on screen (phone or desktop, shown or hidden)
    plus a quarter of the screen, so a tile under the top bar can always be dragged into the clear. A small map can be moved too. */
@@ -41,13 +43,35 @@ function fitCamera() {
   const mine = G.units.filter(u => u.team === ME);
   const c = mine.length ? {x:mine.reduce((s, u) => s + u.x, 0) / mine.length, y:mine.reduce((s, u) => s + u.y, 0) / mine.length} : {x:G.W / 2, y:G.H / 2};
   centerOn(c.x, c.y);
+  fillView(c.x, c.y);
 }
-function centerOn(x, y) { cam.x = x * ART + ART / 2 - innerWidth / cam.z / 2; cam.y = y * ART + ART / 2 - innerHeight / cam.z / 2; clampCam(); }
-function zoomAt(sx, sy, z) { z = clamp(z, minZoom(), 2.2); const wx = cam.x + sx / cam.z, wy = cam.y + sy / cam.z; cam.z = z; cam.x = wx - sx / z; cam.y = wy - sy / z; clampCam(); }
+/* where the map is big enough, keep the screen full of map rather than half a screen of void beside an army at the edge,
+   as long as the tile being looked at stays well inside the view */
+function fillView(x, y) {
+  const vw = innerWidth / cam.z, vh = innerHeight / cam.z, mw = G.W * ART, mh = G.H * ART, e = hudEdges(), ox = cam.x, oy = cam.y;
+  cam.x = mw >= vw ? clamp(cam.x, 0, mw - vw) : (mw - vw) / 2;                 // a map narrower than the screen sits in the middle of it
+  const sh = vh - (e.top + e.bot) / cam.z; cam.y = mh >= sh ? clamp(cam.y, -e.top / cam.z, mh - vh + e.bot / cam.z) : (mh - vh) / 2 + (e.bot - e.top) / 2 / cam.z;
+  const sx = (x * ART + ART / 2 - cam.x) * cam.z, sy = (y * ART + ART / 2 - cam.y) * cam.z;
+  if (sx < 70 || sx > innerWidth - 70 || sy < e.top + 40 || sy > innerHeight - e.bot - 40) { cam.x = ox; cam.y = oy; }
+}
+function centerOn(x, y) { GLIDE = null; cam.x = x * ART + ART / 2 - innerWidth / cam.z / 2; cam.y = y * ART + ART / 2 - innerHeight / cam.z / 2; clampCam(); }
+function zoomAt(sx, sy, z) { GLIDE = null; z = clamp(z, minZoom(), 2.2); const wx = cam.x + sx / cam.z, wy = cam.y + sy / cam.z; cam.z = z; cam.x = wx - sx / z; cam.y = wy - sy / z; clampCam(); }
 function focus(x, y) {
   if (FAST) return;
   const sx = (x * ART + ART / 2 - cam.x) * cam.z, sy = (y * ART + ART / 2 - cam.y) * cam.z, m = 130;
-  if (sx < m || sy < m + 40 || sx > innerWidth - m || sy > innerHeight - m - 60) centerOn(x, y);
+  if (sx < m || sy < m + 40 || sx > innerWidth - m || sy > innerHeight - m - 60) glideTo(x, y);
+}
+/* the view glides to the action over a quarter of a second rather than jumping (it jumps with reduced motion);
+   any drag, pinch, zoom or centring takes over at once */
+let GLIDE = null;
+function glideTo(x, y) {
+  const fx = cam.x, fy = cam.y; centerOn(x, y); fillView(x, y);
+  if (reducedMotion() || Math.hypot(cam.x - fx, cam.y - fy) < 4) { GLIDE = null; return; }
+  GLIDE = {fx, fy, tx:cam.x, ty:cam.y, t0:performance.now(), dur:260}; cam.x = fx; cam.y = fy;
+}
+function stepGlide(now) {
+  if (!GLIDE) return; const k = Math.min(1, (now - GLIDE.t0) / GLIDE.dur), e = 1 - Math.pow(1 - k, 3);
+  cam.x = GLIDE.fx + (GLIDE.tx - GLIDE.fx) * e; cam.y = GLIDE.fy + (GLIDE.ty - GLIDE.fy) * e; if (k >= 1) GLIDE = null;
 }
 const screenToTile = (sx, sy) => [Math.floor((cam.x + sx / cam.z) / ART), Math.floor((cam.y + sy / cam.z) / ART)];
 
@@ -56,7 +80,7 @@ let frame = 0;
 function draw(t) {
   requestAnimationFrame(draw);
   if (!G || !terrainCanvas || document.body.dataset.screen !== 'game') return;
-  frame = Math.floor(t / 140);
+  frame = Math.floor(t / 140); stepGlide(t);
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#16170f'; ctx.fillRect(0, 0, cv.width, cv.height);
   const sh = FX.shake > .3 ? FX.shake : 0; FX.shake *= .88;
   const s = dpr * cam.z; ctx.setTransform(s, 0, 0, s, (-cam.x + (Math.random() - .5) * sh) * s, (-cam.y + (Math.random() - .5) * sh) * s); ctx.imageSmoothingEnabled = cam.z < .7;
@@ -191,12 +215,24 @@ function drawMinimap() {
   for (const u of G.units) { mmg.fillStyle = u.team === 1 ? '#fff' : '#111'; mmg.fillRect(u.x * s + 1, u.y * s + 1, Math.max(1, s - 2), Math.max(1, s - 2)); mmg.fillStyle = teamCol(u.team); mmg.fillRect(u.x * s + s / 2 - .5, u.y * s + s / 2 - .5, 1, 1); }
   mmg.strokeStyle = '#ffde6a'; mmg.lineWidth = 1; mmg.strokeRect(cam.x / ART * s, cam.y / ART * s, innerWidth / cam.z / ART * s, innerHeight / cam.z / ART * s);
 }
+/* the minimap tucks in under the generals' cards (it used to cover the enemy's power stars), and the zoom buttons step down below it
+   when a short window would make them collide. Measured, because the cards' height changes with the screen and the font. */
+function layoutHud() {
+  const vb = $('#viewbtns'), top = $('#top'); if (!vb || !top || document.body.dataset.screen !== 'game') return;
+  const cards = [...top.querySelectorAll('.co')].map(e => e.getBoundingClientRect().bottom).filter(b => b > 0);
+  mm.style.top = Math.round((cards.length ? Math.max(...cards) : top.getBoundingClientRect().bottom) + 8) + 'px';
+  vb.style.top = ''; vb.style.transform = '';
+  if (mm.classList.contains('off') || document.body.classList.contains('hudless')) return;
+  const a = mm.getBoundingClientRect(), b = vb.getBoundingClientRect();
+  if (b.top < a.bottom + 8 && b.right > a.left) { vb.style.top = Math.round(a.bottom + 8) + 'px'; vb.style.transform = 'none'; }
+}
 mm.addEventListener('pointerdown', e => { if (!G) return; const r = mm.getBoundingClientRect(); centerOn((e.clientX - r.left) / r.width * G.W, (e.clientY - r.top) / r.height * G.H); e.stopPropagation(); });
 
 /* ---------- HUD ---------- */
 function hud() {
   if (!G) return;
   nextCount();
+  requestAnimationFrame(layoutHud);
   for (const t of [1, 2]) {
     const T = G.teams[t], c = CO[T.co], el = $('#co' + t);
     el.classList.toggle('active', G.turn === t);
@@ -314,8 +350,8 @@ async function doAttack(u, t) {
   if (!FAST) {
     if (SET.battle) { await battleScene(u, t, res, preA, preD); fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty}, res.killed, {quiet:true}); }
     else { const dk = res.killed && deathKind(t.d); await fxAttackMap({...u, x:ux, y:uy}, {...t, x:tx, y:ty, dk}, res.killed); if (res.killed) killSound(t.d, .05, dk); }
-    fxText(tx, ty, '-' + (Math.ceil(preD / 10) - Math.max(0, Math.ceil(t.hp / 10))));
-    if (res.counter) { if (!SET.battle) { const dk = res.cKilled && deathKind(u.d); await sleep(200); await fxAttackMap({...t, x:tx, y:ty}, {...u, x:ux, y:uy, dk}, res.cKilled); if (res.cKilled) killSound(u.d, .05, dk); } fxText(ux, uy, '-' + (Math.ceil(preA / 10) - Math.max(0, Math.ceil(u.hp / 10)))); }
+    fxDmg(tx, ty, Math.ceil(preD / 10) - Math.max(0, Math.ceil(t.hp / 10)), res.killed);
+    if (res.counter) { if (!SET.battle) { const dk = res.cKilled && deathKind(u.d); await sleep(200); await fxAttackMap({...t, x:tx, y:ty}, {...u, x:ux, y:uy, dk}, res.cKilled); if (res.cKilled) killSound(u.d, .05, dk); } fxDmg(ux, uy, Math.ceil(preA / 10) - Math.max(0, Math.ceil(u.hp / 10)), res.cKilled); }
     if (res.pinned && G.units.includes(res.pinned)) { fxText(res.pinned.x, res.pinned.y, 'PINNED DOWN', '#ffb060', 1800); fxBark(res.pinned, 'hurt'); }
     if (res.killed && G.units.includes(u)) fxBark(u, 'kill');
     else if (G.units.includes(t) && t.hp <= 40) fxBark(t, 'hurt');
@@ -364,7 +400,8 @@ async function beginTurn() {
   const team = G.turn, ep = EPOCH;
   const {rep, pinned, ditched} = startTurn(team);
   UI.mode = 'idle'; UI.sel = null; UI.reach = null; UI.hoverEnemy = null;
-  if (isLocalHotseat() && !FAST) { UI.busy = true; await handoff(team); UI.busy = false; if (stale(ep)) return; }
+  UI.busy = true;   // no orders while the day's banner and events play out: a turn ended early let this turn's tail run in the enemy's turn and save the game mid-move
+  if (isLocalHotseat() && !FAST) { await handoff(team); if (stale(ep)) return; }
   hud(); musicMood(isNight() ? 'night' : G.teams[team].nat);
   await banner(fmtClock(G.day), `Turn ${G.day} · ${NATION[G.teams[team].nat].n} · ${CO[G.teams[team].co].n}`); if (stale(ep)) return;
   for (const u of pinned || []) fxText(u.x, u.y, 'PINNED DOWN', '#ffb060', 1800);
@@ -389,12 +426,14 @@ async function beginTurn() {
       if (sea) tip('convoy', 'Convoy battle: steam the merchant ships to the far edge of the map. Screen them with escorts; U-boats will go for the merchantmen.');
       else tip('breakout', 'Get-out battle: drive the units named in the objective off the map edge given in the briefing. Each one that reaches it counts; lose too many on the way and the battle is lost. Use everything else to cover them.'); }
     if (canPower(team, 1)) tip('power', 'Your general\'s power is ready. Use it from the button at the bottom right, or click empty ground for the menu. Saving up for the Super Power gives a bigger effect.'); }
+  UI.busy = false; hud();
   if (isAI(team)) await aiTurn(team);
   else { autosave(); const u = G.units.find(o => o.team === team && !o.d.fixed); if (u) { UI.cursor = {x:u.x, y:u.y}; focus(u.x, u.y); } }
 }
 async function aiTurn(team) {
   const ep = EPOCH;
   UI.busy = true; hud();
+  if (!G.watch && !isAI(enemyOf(team)) && !SET.aiFast) tip('fast', 'The enemy is moving. Long turns can be sped up with the Fast button at the bottom right, or for every battle with Fast enemy turns in Settings.');
   const lv = aiPower(team); if (lv) { await usePower(team, lv); if (stale(ep)) return; UI.busy = true; }
   for (let guard = 0; guard < 300; guard++) {
     if (G.over) break;
@@ -463,7 +502,7 @@ async function gameOver() {
   const medals = solo ? recordGame(won) : [];
   r.querySelector('.vets').innerHTML = (medals.length ? '<h4>Decorated</h4>' + medals.map(id => `<span>${medalName(id)}</span>`).join('') : '') + (promoted.length ? '<h4>Into the core force</h4>' + promoted.map(c => `<span>${RANKS[rankOf(c)].n} · ${udef(c.nat, c.role).n} · ${c.name}</span>`).join('') : '');
   r.hidden = false;
-  musicMood(won ? 'victory' : 'defeat', false, won ? G.teams[w].nat : null);
+  musicMood(won ? 'victory' : 'defeat', false, won ? G.teams[w].nat : noHuman || bothHuman ? null : G.teams[human].nat);   // a defeat plays the loser's own lament (The Last Post, Taps), not another army's
 }
 
 /* ---------- campaign progress and the core force ---------- */
@@ -762,7 +801,7 @@ addEventListener('click', e => { if (TAP.onMap && TAP.touch && e.detail > 0 && e
 cv.addEventListener('pointerdown', e => { auInit(); UI.touch = e.pointerType === 'touch'; PTRS.set(e.pointerId, {x:e.clientX, y:e.clientY});
   if (UI.touch && G) tip('touch', 'Drag to scroll the map and pinch to zoom. Tap a unit, then tap where it should go. Tap an enemy once to see the odds, and again to attack. Tap empty ground to see what it is; tap it again for the menu.');
   if (PTRS.size === 2) { const [a, b] = [...PTRS.values()]; pinch = {d:Math.hypot(a.x - b.x, a.y - b.y) || 1, z:cam.z}; if (drag) drag.moved = true; return; }   // a second finger turns the drag into a pinch
-  drag = {x:e.clientX, y:e.clientY, cx:cam.x, cy:cam.y, moved:false, id:e.pointerId}; });
+  GLIDE = null; drag = {x:e.clientX, y:e.clientY, cx:cam.x, cy:cam.y, moved:false, id:e.pointerId}; });
 addEventListener('pointercancel', e => { PTRS.delete(e.pointerId); if (PTRS.size < 2) pinch = null; if (drag && drag.id === e.pointerId) drag = null; });
 addEventListener('pointermove', e => {
   if (!G || document.body.dataset.screen !== 'game') return;
@@ -778,7 +817,7 @@ addEventListener('pointerup', e => {
   if (!drag || e.pointerId !== drag.id) return; const d = drag; drag = null;
   if (d.moved || e.target !== cv) return;
   const [x, y] = screenToTile(e.clientX, e.clientY);
-  if (e.button === 2) { cancel(); return; }
+  if (e.button === 2) return;                            // the contextmenu event steps back; cancelling here as well stepped back twice (menu straight to idle)
   if (UI.touch && touchPeek(x, y)) return;
   tileAction(x, y);
 });
@@ -871,7 +910,7 @@ function clearAutosave() { try { localStorage.removeItem('if44auto2'); } catch (
 
 /* ---------- screens ---------- */
 function zoomStep(k) { if (G) zoomAt(innerWidth / 2, innerHeight / 2, cam.z * k); }
-function toggleMinimap() { const m = $('#minimap'), off = m.classList.toggle('off'), b = $('#maptoggle'); if (b) { b.setAttribute('aria-pressed', String(!off)); b.classList.toggle('on', !off); } }
+function toggleMinimap() { const m = $('#minimap'), off = m.classList.toggle('off'), b = $('#maptoggle'); if (b) { b.setAttribute('aria-pressed', String(!off)); b.classList.toggle('on', !off); } layoutHud(); }
 /* hide the interface to look at the map: the button stays, everything else steps aside until pressed again (or V) */
 function toggleHud(force) {
   const off = typeof force === 'boolean' ? force : !document.body.classList.contains('hudless'), b = $('#hudtoggle');
@@ -894,9 +933,11 @@ function startGame(cfg) {
   if (cfg.mission) deployCore(cfg.mission);
   enterGame();
   (async () => {
+    UI.busy = true;   // the generals' opening words come first
     if (cfg.mission) { await say(cfg.teams[1].co, CO[cfg.teams[1].co].say.start); await say(cfg.teams[2].co, CO[cfg.teams[2].co].say.start);
       if (G.coreNames && G.coreNames.length) await say(cfg.teams[1].co, `Your veterans are with us: ${G.coreNames.join(', ')}.`); }
-    setTimeout(() => tip('orders', 'Click one of your units to see where it can move (blue). Click a blue square, then pick an order. Right-click steps back. Hover over terrain for its cover and what it does. E ends your turn.'), 2600);
+    setTimeout(() => tip('orders', touchUI() ? 'Tap one of your units to see where it can move (blue). Tap a blue square, then pick an order. Tap anywhere else to step back. Tap empty ground once to see its cover. End turn is at the bottom of the screen.'
+      : 'Click one of your units to see where it can move (blue). Click a blue square, then pick an order. Right-click steps back. Hover over terrain for its cover and what it does. E ends your turn.'), 2600);
     beginTurn();
   })();
 }
@@ -1165,8 +1206,12 @@ const DIFFICULTY = {};
 function diffLevel(id) { const r = DIFFICULTY[id]; return r == null ? 0 : r >= .9 ? 1 : r >= .7 ? 2 : r >= .45 ? 3 : r >= .2 ? 4 : 5; }
 function diffText(id) { const l = diffLevel(id); return l ? ` · ${['', 'Easy', 'Moderate', 'Hard', 'Very hard', 'Desperate'][l]} ${'●'.repeat(l)}${'○'.repeat(5 - l)}` : ''; }
 /* ---------- despatches: what is new since the player last visited ---------- */
-const GAME_VERSION = 15;
+const GAME_VERSION = 16;
 const DESPATCH = [
+  ['Base Building', 'A new mode beside Skirmish for up to eight players, people on one device and computer generals, alone or in teams. Build a base round your HQ, send lorries out to cut the wheat, turn grain into an army and destroy every enemy HQ.'],
+  ['Operation Exporter', 'A new campaign: Syria and Lebanon, June and July 1941. Cross the Litani with one canvas boat, march by night to Mezzeh and Damascus with the 5th Indian Brigade, and outflank Damour with the 7th Australian Division, against the Vichy French Armée du Levant.'],
+  ['Easier on phones', 'Field notes no longer cover your orders, End turn has a row of its own, every button is a proper size for a thumb, and the tips talk about tapping, not right-clicking.'],
+  ['Smoother battles', 'The view glides to the action, damage shows in large red numbers, small maps sit in the middle of the screen, and a lost battle plays your own army\'s lament. With reduced motion set on your device, the screen no longer shakes.'],
   ['The Desert War', 'A new campaign, Beda Fomm to Tunis: the Easter Battle at Tobruk, Bir Hakeim, Operation Lightfoot through the Devil\'s Gardens, Kasserine Pass and the fall of Tunis. On the Axis side, Hellfire Pass and Rommel\'s capture of Tobruk. The Afrikakorps, the Italian army, the Eighth Army in khaki drill and the Free French, with dunes, wadis, escarpments and the 88.'],
   ['Dead of Night', 'Zombie survival. The dead come in waves from every edge, Walkers, Runners, Spitters, Brutes and an Abomination, and every soldier they kill rises to join them.'],
   ['Choose your force', 'In Last Stand and Dead of Night you can now set your starting money and pick your own troops, gun nests and dug-in guns included.'],
